@@ -1,2 +1,2 @@
 # fuzzy-happiness
-Experimental projects
+Experimental projects - coming soon...
