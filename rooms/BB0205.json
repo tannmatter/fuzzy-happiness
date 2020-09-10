@@ -3,11 +3,14 @@
 	"room": "205",
 	"projector": {
 		"driver": "NEC",
+		"driver_file": "nec",
 		"model": "NP-P401W",
+		"comm_method": "tcp",
+		"ip_address": "161.31.108.31",
 		"inputs": [
 			"RGB_1",
 			"DIGITAL_1",
-            "DIGITAL_2",,
+            "DIGITAL_2",
 			"VIDEO_1",
 			"VIDEO_2"
 		],

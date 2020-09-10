@@ -29,7 +29,7 @@ class NEC(ProjectorInterface):
     # available inputs
     # this has to be supplied by the configuration info for the room...
     # NECs don't have a command to retrieve this list
-    inputs_available = []
+    inputs_available = set()
 
     class Interface(ProjectorInterface.Interface):
         """Communication interface"""

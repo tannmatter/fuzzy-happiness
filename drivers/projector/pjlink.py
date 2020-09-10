@@ -229,7 +229,7 @@ class PJLink(ProjectorInterface):
         if result is not None:
             if result.find(b'ERR') != -1:
                 raise Exception(result[7:11], 'An error occurred: ' + self.cmd_errors[result[7:11]])
-            elif result.find("OK") != -1:
+            elif result.find(b'OK') != -1:
                 return True
 
     def power_off(self):
@@ -239,7 +239,7 @@ class PJLink(ProjectorInterface):
         if result is not None:
             if result.find(b'ERR') != -1:
                 raise Exception(result[7:11], 'An error occurred: ' + self.cmd_errors[result[7:11]])
-            elif result.find("OK") != -1:
+            elif result.find(b'OK') != -1:
                 return True
 
     def get_power_status(self):
@@ -411,4 +411,4 @@ class PJLink(ProjectorInterface):
         """
         result = self.__cmd(cmd=self.Command.GET_MODEL)
         if result is not None:
-            return result[7:].rstrip()
+            return result[7:].decode('utf-8').rstrip()
