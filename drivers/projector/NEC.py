@@ -9,22 +9,12 @@ from drivers.projector.projector import ProjectorInterface
 
 RECVBUF = 512
 
-'''
-TODO:
-    - clean up this driver to make it more closely match the pjlink driver,
-    both in method names and functionality where it makes sense
-
-    - get the most salient bits of data after object instantiation
-
-    - develop a proper interface to bind all projector drivers to a contract!
-
-    - move forward with other stuff..
-'''
-
 
 class NEC(ProjectorInterface):
     """A generic NEC projector driver based on the NEC control command manual,
-    revision 7.1 dated April 16, 2020
+    revision 7.1 dated April 16, 2020 and supplementary command information,
+    revision 20.0
+    https://www.nec-display-solutions.com/p/download/v/5e14a015e26cacae3ae64a422f7f8af4/cp/Products/Projectors/Shared/CommandLists/PDF-ExternalControlManual-english.pdf?fn=ExternalControlManual-english.pdf
     """
 
     # serial or socket interface
@@ -64,15 +54,16 @@ class NEC(ProjectorInterface):
                 return self.connection.recv(size)
 
     class Input(ProjectorInterface.Input):
+        """See supplementary information regarding [018. INPUT SW CHANGE], Appendix pp. 18-22"""
         RGB_1 = b'\x01'
         RGB_2 = b'\x02'
-        DIGITAL_1 = b'\x1a'  # HDMI nowadays
-        DIGITAL_1_ALT = b'\xa1'  # Some models it's '1a' and some it's 'a1'... <shakes head> oh, NEC...
-        DIGITAL_2 = b'\x1b'  # I _know_ for a fact we have some of each model
-        DIGITAL_2_ALT = b'\xa2'  # same here...
+        DIGITAL_1 = b'\x1a'        # HDMI
+        DIGITAL_1_ALT = b'\xa1'    # Some models it's '0x1a' and some it's '0xa1'... <shakes head>
+        DIGITAL_2 = b'\x1b'        # We own some of each model, ie. NP-M322X is 0xA1, NP-M311X is 0x1A
+        DIGITAL_2_ALT = b'\xa2'    # same here, gotta try to support em all...
         VIDEO_1 = b'\x06'
-        VIDEO_2 = b'\x0b'  # S-Video typically
-        VIDEO_3 = b'\x10'  # Component
+        VIDEO_2 = b'\x0b'          # S-Video typically
+        VIDEO_3 = b'\x10'          # Component
         DISPLAYPORT = b'\xa6'
         DISPLAYPORT_ALT = b'\x1b'  # ...and here
 
@@ -86,20 +77,19 @@ class NEC(ProjectorInterface):
 
     class Command(ProjectorInterface.Command):
         # non-parameterized / non-checksummed commands
-        POWER_ON = b'\x02\x00\x00\x00\x00\x02'
-        POWER_OFF = b'\x02\x01\x00\x00\x00\x03'
-        STATUS = b'\x00\xbf\x00\x00\x01\x02\xc2'
-        BASIC_INFO = b'\x03\x8a\x00\x00\x00\x8d'
-        FILTER_INFO = b'\x03\x95\x00\x00\x00\x98'
-        GET_ERRORS = b'\x00\x88\x00\x00\x00\x88'
+        POWER_ON = b'\x02\x00\x00\x00\x00\x02'       # [015. POWER ON], p. 15
+        POWER_OFF = b'\x02\x01\x00\x00\x00\x03'      # [016. POWER OFF], p. 16
+        STATUS = b'\x00\xbf\x00\x00\x01\x02\xc2'     # [305-3. BASIC INFORMATION REQUEST], p. 83-84
+        BASIC_INFO = b'\x03\x8a\x00\x00\x00\x8d'     # [037. INFORMATION REQUEST], p. 32
+        FILTER_INFO = b'\x03\x95\x00\x00\x00\x98'    # [037-3. FILTER USAGE INF. REQ.], p. 33
+        GET_ERRORS = b'\x00\x88\x00\x00\x00\x88'     # [009. ERROR STATUS REQUEST], pp. 13-14
+        GET_MODEL = b'\x00\x85\x00\x00\x01\x04\x8a'  # [078-5. MODEL NAME REQUEST], p. 66
 
         # parameterized / checksummed commands
-        SWITCH_INPUT = b'\x02\x03\x00\x00\x02\x01'  # + input_terminal + checksum
-        LAMP_INFO = b'\x03\x96\x00\x00\x02'  # + lamp_no + data_requested + checksum
+        SWITCH_INPUT = b'\x02\x03\x00\x00\x02\x01'  # + input + checksum [018. INPUT SW CHANGE], p. 17
+        LAMP_INFO = b'\x03\x96\x00\x00\x02'         # + lamp_no + data_requested + checksum [037-4.] p. 34
 
-    # error codes - from the manual located at:
-    # https://www.necdisplay.com/documents/usermanuals/rs232_pj_controlcommands.pdf
-
+    # see Section 2.4 "Error code list", p. 12
     cmd_errors = {
         (0x00, 0x00): 'The command cannot be recognized.',
         (0x00, 0x01): 'The command is not supported by the model in use.',
@@ -126,6 +116,7 @@ class NEC(ProjectorInterface):
 
     status = {
         # Byte 7 (-<Data1>-) operation status
+        # refer to [305-3. BASIC INFORMATION REQUEST], p. 83
         6: {
             0x00: 'Standby (Sleep)',
             0x04: 'Power On',
@@ -143,28 +134,35 @@ class NEC(ProjectorInterface):
             0x05: 'Test pattern (user) displayed',
             0x10: 'Signal being switched'
         },  # Bytes 9 & 10 (-<Data3>-<Data4>-) selection signal type.  Easier to
-        # read these values together as a tuple
+        # read these values together as a tuple.
+        # Refer to supplementary appendix regarding [305-3 BASIC INFO REQ.] App. pp. 30-35
         (0x01, 0x01): 'Computer 1',
         (0x01, 0x02): 'Video',
         (0x01, 0x03): 'S-video',
         (0x01, 0x06): 'HDMI',
         (0x01, 0x07): 'Viewer / USB',
-        (0x01, 0x0a): 'SDI',
+        (0x01, 0x0a): 'Stereo DVI',
+        (0x01, 0x20): 'DVI',
         (0x01, 0x21): 'HDMI',
         (0x01, 0x22): 'DisplayPort',
         (0x01, 0x23): 'SLOT',
         (0x01, 0x27): 'HDBaseT',
+        (0x01, 0x28): 'SDI',
         (0x02, 0x01): 'Computer 2',
         (0x02, 0x06): 'HDMI 2 / DP',
         (0x02, 0x07): 'LAN',
         (0x02, 0x21): 'HDMI 2',
-        (0x02, 0x22): 'UNDEFINED',
+        (0x02, 0x22): 'DisplayPort 2',
+        (0X02, 0X28): 'SDI 2',
         (0x03, 0x01): 'Computer 3',
         (0x03, 0x04): 'Component',
         (0x03, 0x06): 'SLOT',
+        (0x03, 0x28): 'SDI 3',
         (0x04, 0x07): 'USB',
+        (0x04, 0x28): 'SDI 4',
         (0x05, 0x07): 'APPS',
         # Byte 11 (-<Data5>-) Display signal type (only applies to video / s-video)
+        # refer to [305-3. BASIC INFORMATION REQUEST], p. 84
         10: {
             0x00: 'NTSC3.58',
             0x01: 'NTSC4.43',
@@ -182,7 +180,7 @@ class NEC(ProjectorInterface):
             0x0d: 'NTSC',
             0x0e: 'PAL-M',
             0x0f: 'PAL-L',
-            0xff: 'Not video nor s-video'
+            0xff: 'Not video or s-video input'
         },  # Byte 12 (-<Data6>-) Video mute status
         11: {
             0x00: False,
@@ -223,6 +221,7 @@ class NEC(ProjectorInterface):
     }
 
     # error status flags
+    # see [009. ERROR STATUS REQUEST], pp. 13-14
     error_status = {
         # 6th byte of response -<Data1>-
         5: {
@@ -477,8 +476,9 @@ class NEC(ProjectorInterface):
 
         Notes
         -----
-        The value of HDMI 1, HDMI 2, and DisplayPort inputs vary from model to model.
-        If one of these inputs is specified, both most common variations will be tried
+        The value of HDMI 1, HDMI 2, and DisplayPort inputs vary from model to model (according to the manual,
+        though this has not been verified and I have found inaccuracies in their reporting).
+        If one of these inputs is specified, both manual-specified variations will be tried
         before reporting failure.
         """
         # special case needed for HDMI & Displayport switching...
@@ -656,6 +656,21 @@ class NEC(ProjectorInterface):
     def av_mute(self):
         return self.get_mute_status()
 
+    #
+    # Typically unused methods past here
+    #
+
+    def get_model(self) -> str:
+        """Return a string representing the model name or series"""
+        data = self.__cmd(self.Command.GET_MODEL)
+        if data is not None:
+            if len(data) == 2:
+                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+            else:
+                # data starts at 6th byte
+                model = data[5:37].decode('utf-8').rstrip('\x00')
+                return model
+
     def get_input(self) -> str:
         """Return a text string representing what input terminal the projector appears to be set to."""
         data = self.__cmd(self.Command.STATUS)
@@ -694,6 +709,8 @@ class NEC(ProjectorInterface):
         return data
 
     # GENERAL RULES OF THUMB:
+
+    # See section 2.3 "Responses", p. 11
 
     # when a command is successful, the response is as follows:
     # - the high order nibble of the first byte is '2'
