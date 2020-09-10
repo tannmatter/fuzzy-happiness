@@ -527,38 +527,6 @@ class NEC(ProjectorInterface):
                 # return the new input selected
                 return input_
 
-    def get_basic_info(self) -> dict:
-        """Return projector model information, lamp hours, & filter hours"""
-        data = self.__cmd(self.Command.BASIC_INFO)
-        if data is not None:
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                # <Data1> - <Data49> : Projector name
-                # <Data1> starts @ 6th byte
-                series = data[5:54].decode('utf-8').rstrip('\x00')
-
-                # <Data83> - <Data86> : Lamp usage time in seconds
-                # <Data83> starts @ 88th byte
-                lamp_secs = int.from_bytes(data[87:91], 'little')
-                lamp_hours = lamp_secs // 3600
-
-                # <Data87> - <Data90> : Filter usage time in seconds
-                # <Data87> starts @ 92nd byte
-                filter_secs = int.from_bytes(data[91:95], 'little')
-                filter_hours = filter_secs // 3600
-
-                result = {
-                    'series': series,
-                    'lamp': {
-                        'usage': lamp_hours
-                    },
-                    'filter': {
-                        'usage': filter_hours
-                    }
-                }
-                return result
-
     def get_status(self) -> dict:
         """Return information about what source is selected, and status of
         power, display, picture mute, sound mute, and picture freeze
@@ -659,6 +627,49 @@ class NEC(ProjectorInterface):
     #
     # Typically unused methods past here
     #
+
+    def get_basic_info(self) -> dict:
+        """Return projector model information, lamp hours, & filter hours.
+
+        Notes:
+        ------
+        According to the manual, the model name is in bytes 5:54.  For the most part the end space is
+        padded out with nulls, but certain older models (LT-280 & LT-380) have other random bytes
+        in there as well, causing a utf-8 bad continuation character parsing error.  Hence, we
+        truncate the name after the first null.
+        """
+        data = self.__cmd(self.Command.BASIC_INFO)
+        if data is not None:
+            if len(data) == 2:
+                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+            else:
+                # <Data1> - <Data49> : Projector name
+                # <Data1> starts @ 6th byte & goes through the 54th
+                # LT280 models have a 'bad continuation character' at position 32, byte 0xc2,
+                # so we'll only try to decode up to the first null
+                series = data[5:54].partition(b'\x00')[0].decode('utf-8')
+
+                # <Data83> - <Data86> : Lamp usage time in seconds
+                # <Data83> starts @ 88th byte
+                lamp_secs = int.from_bytes(data[87:91], 'little')
+                lamp_hours = lamp_secs // 3600
+
+                # <Data87> - <Data90> : Filter usage time in seconds
+                # <Data87> starts @ 92nd byte
+                filter_secs = int.from_bytes(data[91:95], 'little')
+                filter_hours = filter_secs // 3600
+
+                result = {
+                    'series': series,
+                    'lamp': {
+                        'usage': lamp_hours
+                    },
+                    'filter': {
+                        'usage': filter_hours
+                    }
+                }
+                return result
+
 
     def get_model(self) -> str:
         """Return a string representing the model name or series"""
