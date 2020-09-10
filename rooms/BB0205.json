@@ -1,0 +1,16 @@
+{
+	"building": "Burdick",
+	"room": "205",
+	"projector": {
+		"driver": "NEC",
+		"model": "NP-P401W",
+		"inputs": [
+			"RGB_1",
+			"DIGITAL_1",
+            "DIGITAL_2",,
+			"VIDEO_1",
+			"VIDEO_2"
+		],
+		"lamps": 1
+	}
+}
