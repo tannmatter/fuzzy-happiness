@@ -4,40 +4,59 @@ import importlib
 import json
 import sys
 
+from drivers.projector.projector import ProjectorInterface
+
+
+# TODO: Fix
 
 if __name__ == "__main__":
-    with open('rooms/BB0115.json', 'r') as f:
-        room = json.load(f)
+    configs = ['rooms/BB0115.json', 'rooms/BB0205.json']
+    files = rooms = pjs = []
+    for index, file in enumerate(configs):
+        with open(file, 'r') as f:
+            rooms.append(json.load(f))
 
-    driver_class_name = room['projector']['driver']
-    driver_module_name = room['projector']['driver_file']
-    driver_module = importlib.import_module('drivers.projector.' + driver_module_name)
-    driver_class = getattr(driver_module, driver_class_name)
+    print(rooms)
 
     try:
-        comm_method = room['projector']['comm_method']
-        pj = None
+        for room in rooms:
+            pj = None
+            pj_sub_key = room['projector']
+            driver_class_name = pj_sub_key['drivers'][0]
 
-        if comm_method == "tcp":
-            pj = driver_class(room['projector']['ip_address'])
-        elif comm_method == "serial":
-            pj = driver_class(room['projector']['serial_device'])
+            # assume driver module is lowercase version of class name
+            driver_module_name = driver_class_name.lower()
+            driver_module = importlib.import_module('drivers.projector.' + driver_module_name)
+            driver_class = getattr(driver_module, driver_class_name)
 
-        if pj is None:
-            sys.exit('Failed to instantiate projector control')
+            print(pj_sub_key)
 
-        if 'model' in room['projector']:
-            pj.model = room['projector']['model']
-        if 'lamps' in room['projector']:
-            pj.lamp_count = room['projector']['lamps']
+            comm_method = pj_sub_key['comm_method']
+            # add an empty member to list of pjs
 
-        if 'inputs' in room['projector']:
-            # get available inputs
-            for inp in room['projector']['inputs']:
-                # find the matching input listed in the driver module & add to the set
-                pj.inputs_available.add(pj.Input[inp])
+            if comm_method == "tcp":
+                pj = driver_class(pj_sub_key['ip_address'])
+            elif comm_method == "serial":
+                pj = driver_class(pj_sub_key['serial_device'])
 
-        print(pj.inputs_available)
+            if pj is None:
+                sys.exit('Failed to instantiate projector control')
+
+            if 'model' in pj_sub_key:
+                pj.model = pj_sub_key['model']
+            if 'lamps' in pj_sub_key:
+                pj.lamp_count = pj_sub_key['lamps']
+
+            if 'inputs' in pj_sub_key:
+                # get available inputs
+                for inp in pj_sub_key['inputs']:
+                    # find the matching input listed in the driver module & add to the set
+                    pj.inputs_available.add(pj.Input[inp])
+
+            pjs.append(pj)
+
     except Exception as inst:
         print(inst)
         sys.exit(1)
+
+    print(pjs)
