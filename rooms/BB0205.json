@@ -6,6 +6,7 @@
 		"model": "NP-P401W",
 		"comm_method": "tcp",
 		"ip_address": "161.31.108.31",
+		"ip_port": 7142,
 		"inputs": [
 			"RGB_1",
 			"DIGITAL_1",

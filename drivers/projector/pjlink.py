@@ -116,12 +116,13 @@ class PJLink(ProjectorInterface):
         3: 'All muted'
     }
 
-    def __init__(self, ip_address=None, ip_port=4352):
+    def __init__(self, ip_address=None, ip_port=4352, pj=None):
         """Create a PJLink projector driver instance and initialize a connection to the
         projector over TCP (default port 4352).
 
         PJLink instance variables set here:
 
+        projector :         A reference back to the projector using this interface instance
         comms :             Socket communication interface
         lamp_count :        Number of lamps this projector has.
                             Inferred from data returned by the "%1LAMP ?" PJLink command
@@ -130,8 +131,9 @@ class PJLink(ProjectorInterface):
         pjlink_class :      PJ-Link class (1|2)
                             Returend by the "%1CLSS ?" PJLink command
         """
-        if ip_address is not None and ip_port is not None:
+        if ip_address is not None and ip_port is not None and pj is not None:
             try:
+                self.projector = pj
                 conn = create_connection((ip_address, ip_port))
             except Exception as inst:
                 print(inst)
@@ -155,7 +157,7 @@ class PJLink(ProjectorInterface):
                     self.lamp_count = 1
 
                 # get what PJLink class we support
-                self.pjlink_class = self.get_class()
+                self.pjlink_class = self.get_pjlink_class()
 
     def __del__(self):
         """Destructor.  Ensure that if a serial or socket interface was opened,
@@ -208,7 +210,7 @@ class PJLink(ProjectorInterface):
         except Exception as inst:
             print(inst)
 
-    def get_class(self):
+    def get_pjlink_class(self):
         """Get what PJLink class this device supports
         """
         result = self.__cmd(cmd=self.Command.GET_CLASS)
