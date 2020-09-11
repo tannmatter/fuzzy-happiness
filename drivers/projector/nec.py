@@ -276,49 +276,52 @@ class NEC(ProjectorInterface):
     }
 
     def __init__(self, ip_address=None, ip_port=7142, comm_method='tcp', serial_device=None,
-                 serial_baud_rate=None, timeout=0.1):
+                 serial_baud_rate=None, timeout=0.1, pj=None):
         """Create an NEC projector driver instance and initialize a connection to the
         projector over either serial (RS-232) or TCP. Default to TCP 7142
 
         NEC instance variables set here:
 
-        comms :            Socket or serial communicaiton interface
-        lamp_count :       Number of lamps this projector has
-                           Must be specified by configuration data as there's no NEC command to retrieve this
-                           Defaults to 1
-        inputs_available : Set of available inputs.
-                           Must be specified by configuration data as NEC has no command to determine this
-                           Defaults to empty set
+        projector :         A reference back to the projector using this interface instance
+        comms :             Socket or serial communicaiton interface
+        lamp_count :        Number of lamps this projector has
+                            Must be specified by configuration data as there's no NEC command to retrieve this
+                            Defaults to 1
+        inputs_available :  Set of available inputs.
+                            Must be specified by configuration data as NEC has no command to determine this
+                            Defaults to empty set
         """
-        self.lamp_count = 1
-        self.inputs_available = set()
+        if pj is not None:
+            self.projector = pj
+            self.lamp_count = 1
+            self.inputs_available = set()
 
-        if comm_method == 'serial':
-            try:
-                connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=timeout)
-            except Exception as inst:
-                print(inst)
-            else:
-                self.comms = self.Comms()
-                self.comms.serial_device = serial_device
-                self.comms.serial_baud_rate = serial_baud_rate
-                self.comms.serial_timeout = timeout
-                self.comms.connection = connection
-                self.comms.connection.close()
-        elif comm_method == 'tcp':
-            if ip_address is not None and ip_port is not None:
+            if comm_method == 'serial':
                 try:
-                    connection = create_connection((ip_address, ip_port))
+                    connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=timeout)
                 except Exception as inst:
                     print(inst)
                 else:
                     self.comms = self.Comms()
-                    self.comms.tcp_ip = ip_address
-                    self.comms.tcp_port = ip_port
+                    self.comms.serial_device = serial_device
+                    self.comms.serial_baud_rate = serial_baud_rate
+                    self.comms.serial_timeout = timeout
                     self.comms.connection = connection
                     self.comms.connection.close()
-        else:
-            raise Exception('The only valid values of comm_method are "tcp" and "serial"')
+            elif comm_method == 'tcp':
+                if ip_address is not None and ip_port is not None:
+                    try:
+                        connection = create_connection((ip_address, ip_port))
+                    except Exception as inst:
+                        print(inst)
+                    else:
+                        self.comms = self.Comms()
+                        self.comms.tcp_ip = ip_address
+                        self.comms.tcp_port = ip_port
+                        self.comms.connection = connection
+                        self.comms.connection.close()
+            else:
+                raise Exception('The only valid values of comm_method are "tcp" and "serial"')
 
     def __del__(self):
         """Destructor.  Ensure that if a serial or socket interface was opened,
