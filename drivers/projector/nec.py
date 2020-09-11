@@ -301,6 +301,7 @@ class NEC(ProjectorInterface):
                     connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=timeout)
                 except Exception as inst:
                     print(inst)
+                    sys.exit(1)
                 else:
                     self.comms = self.Comms()
                     self.comms.serial_device = serial_device
@@ -320,6 +321,9 @@ class NEC(ProjectorInterface):
                         self.comms.tcp_port = ip_port
                         self.comms.connection = connection
                         self.comms.connection.close()
+                else:
+                    print("NEC: tcp connection requested but no address specified!")
+                    sys.exit(1)
             else:
                 raise Exception('The only valid values of comm_method are "tcp" and "serial"')
 

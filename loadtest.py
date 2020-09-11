@@ -73,6 +73,7 @@ if __name__ == "__main__":
             if "serial_baud_rate" in pj_sub_key:
                 baud_rate = pj_sub_key['serial_baud_rate']
             pj.interface = driver_class(
+                comm_method="serial",
                 serial_device=pj_sub_key['serial_device'],
                 serial_baud_rate=baud_rate,
                 pj=pj
