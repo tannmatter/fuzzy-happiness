@@ -487,8 +487,14 @@ class NEC(ProjectorInterface):
 
         Notes
         -----
-        The value of HDMI 1, HDMI 2, and DisplayPort inputs vary from model to model (according to the manual,
-        though this has not been verified and I have found inaccuracies in their reporting).
+        The value of HDMI 1, HDMI 2, and DisplayPort inputs vary from model to model (according
+        to the manual, but I have found some inaccuracies in their reporting). As an odd example,
+        an NP-M300X will return an error code if you try to set it to HDMI 0xA1, but will happily
+        accept 0x1A.  However, an NP-M403H I tested in our conference room will accept either one
+        and correctly set the input to HDMI 1... when later queried to determine what the current
+        input was, I believe it reported whichever value I had sent, as if both sets of inputs were
+        completely valid to that model.
+
         If one of these inputs is specified, both manual-specified variations will be tried
         before reporting failure.
         """

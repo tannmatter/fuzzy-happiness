@@ -2,7 +2,7 @@
 	"building": "Burdick",
 	"room": "115",
 	"projector": {
-		"drivers": ["PJLink", "NEC"],
+		"drivers": ["NEC", "PJLink"],
 		"model": "NP-M300X",
 		"comm_method": "tcp",
 		"ip_address": "161.31.66.102",
