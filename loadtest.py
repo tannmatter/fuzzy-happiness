@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+# run this with 'python3 -i <filename>'
 
 import importlib
 import json
@@ -38,7 +39,9 @@ if __name__ == "__main__":
 
         # assume driver module is lowercase version of class name
         driver_module_name = driver_class_name.lower()
+        # import the matching module
         driver_module = importlib.import_module('drivers.projector.' + driver_module_name)
+        # get the class name exported by the module, ie. class NEC in nec.py
         driver_class = getattr(driver_module, driver_class_name)
 
         assert('comm_method' in pj_sub_key), "No comm_method specified for projector"
@@ -50,7 +53,11 @@ if __name__ == "__main__":
             pj = driver_class(pj_sub_key['ip_address'])
         elif comm_method == "serial":
             assert('serial_device' in pj_sub_key), "serial connection requested but no serial_device specified!"
-            pj = driver_class(pj_sub_key['serial_device'])
+            assert('serial_baud_rate' in pj_sub_key), "serial_baud_rate unspecified!"
+            pj = driver_class(
+                serial_device=pj_sub_key['serial_device'],
+                serial_baud_rate=pj_sub_key['serial_baud_rate']
+            )
 
         if pj is None:
             sys.exit('Failed to instantiate projector control')

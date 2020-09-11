@@ -3,7 +3,7 @@ from enum import Enum
 
 
 class ProjectorInterface(metaclass=abc.ABCMeta):
-    """A generic projector interface"""
+    """A generic projector control interface"""
 
     @classmethod
     def __subclasshook__(cls, subclass):
@@ -17,19 +17,7 @@ class ProjectorInterface(metaclass=abc.ABCMeta):
                 hasattr(subclass, 'av_mute')
                 )
 
-    # interface used for communication
-    interface = None
-
-    # count of projector lamps
-    lamp_count = 0
-
-    # unit model number
-    model = ""
-
-    # a set of available inputs
-    inputs_available = set()
-
-    class Interface:
+    class Comms:
         @classmethod
         def __subclasshook__(cls, subclass):
             return (hasattr(subclass, 'send') and callable(subclass.send) and
@@ -46,13 +34,13 @@ class ProjectorInterface(metaclass=abc.ABCMeta):
     class Input(Enum):
         pass
 
+    class Command(Enum):
+        pass
+
     class Lamp(Enum):
         pass
 
     class LampInfo(Enum):
-        pass
-
-    class Command(Enum):
         pass
 
     # a command set representative of most projectors

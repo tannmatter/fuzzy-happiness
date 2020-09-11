@@ -1,5 +1,4 @@
 import sys
-from enum import Enum
 from socket import socket, create_connection
 
 from serial import Serial
@@ -17,22 +16,9 @@ class NEC(ProjectorInterface):
     https://www.nec-display-solutions.com/p/download/v/5e14a015e26cacae3ae64a422f7f8af4/cp/Products/Projectors/Shared/CommandLists/PDF-ExternalControlManual-english.pdf?fn=ExternalControlManual-english.pdf
     """
 
-    # serial or socket interface
-    interface = None
-
-    # number of lamps this projector has
-    lamp_count = 1
-
-    # model number
-    model = ""
-
-    # available inputs
-    # this has to be supplied by the configuration info for the room...
-    # NECs don't have a command to retrieve this list
-    inputs_available = set()
-
-    class Interface(ProjectorInterface.Interface):
-        """Communication interface"""
+    class Comms(ProjectorInterface.Comms):
+        """Communication interface
+        """
         # Serial or socket connection
         connection = None
         serial_device = None
@@ -54,7 +40,9 @@ class NEC(ProjectorInterface):
                 return self.connection.recv(size)
 
     class Input(ProjectorInterface.Input):
-        """See supplementary information regarding [018. INPUT SW CHANGE], Appendix pp. 18-22"""
+        """Inputs for switching.
+        See supplementary information regarding [018. INPUT SW CHANGE], Appendix pp. 18-22
+        """
         RGB_1 = b'\x01'
         RGB_2 = b'\x02'
         DIGITAL_1 = b'\x1a'        # HDMI
@@ -68,14 +56,20 @@ class NEC(ProjectorInterface):
         DISPLAYPORT_ALT = b'\x1b'  # ...and here
 
     class Lamp(ProjectorInterface.Lamp):
+        """Lamp number for models with more than one lamp
+        """
         LAMP_1 = b'\x00'
         LAMP_2 = b'\x01'
 
     class LampInfo(ProjectorInterface.LampInfo):
+        """Lamp datum requested: usage hours or estimated remaining life (%)
+        """
         LAMP_USAGE = b'\x01'
         LAMP_LIFE = b'\x04'
 
     class Command(ProjectorInterface.Command):
+        """ Available commands that work on most models
+        """
         # non-parameterized / non-checksummed commands
         POWER_ON = b'\x02\x00\x00\x00\x00\x02'       # [015. POWER ON], p. 15
         POWER_OFF = b'\x02\x01\x00\x00\x00\x03'      # [016. POWER OFF], p. 16
@@ -281,35 +275,52 @@ class NEC(ProjectorInterface):
         }
     }
 
-    def __init__(self, ip_address=None, ip_port=7142, comm_method='tcp', device=None,
-                 baud_rate=None, timeout=0.1):
+    def __init__(self, ip_address=None, ip_port=7142, comm_method='tcp', serial_device=None,
+                 serial_baud_rate=None, timeout=0.1):
         """Create an NEC projector driver instance and initialize a connection to the
         projector over either serial (RS-232) or TCP. Default to TCP 7142
+
+        NEC instance variables set here:
+
+        comms :            Socket or serial communicaiton interface
+        lamp_count :       Number of lamps this projector has
+                           Must be specified by configuration data as there's no NEC command to retrieve this
+                           Defaults to 1
+        inputs_available : Set of available inputs.
+                           Must be specified by configuration data as NEC has no command to determine this
+                           Defaults to empty set
+        model :            Model name or series.
+                           Can be specified by configuration data or retrieved and set through the get_model() method
+                           Defaults to empty str
         """
+        self.lamp_count = 1
+        self.inputs_available = set()
+        self.model = ""
+
         if comm_method == 'serial':
             try:
-                conn = Serial(port=device, baudrate=baud_rate, timeout=timeout)
+                connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=timeout)
             except Exception as inst:
                 print(inst)
             else:
-                self.interface = self.Interface()
-                self.interface.serial_device = device
-                self.interface.serial_baud_rate = baud_rate
-                self.interface.serial_timeout = timeout
-                self.interface.connection = conn
-                self.interface.connection.close()
+                self.comms = self.Comms()
+                self.comms.serial_device = serial_device
+                self.comms.serial_baud_rate = serial_baud_rate
+                self.comms.serial_timeout = timeout
+                self.comms.connection = connection
+                self.comms.connection.close()
         elif comm_method == 'tcp':
             if ip_address is not None and ip_port is not None:
                 try:
-                    conn = create_connection((ip_address, ip_port))
+                    connection = create_connection((ip_address, ip_port))
                 except Exception as inst:
                     print(inst)
                 else:
-                    self.interface = self.Interface()
-                    self.interface.tcp_ip = ip_address
-                    self.interface.tcp_port = ip_port
-                    self.interface.connection = conn
-                    self.interface.connection.close()
+                    self.comms = self.Comms()
+                    self.comms.tcp_ip = ip_address
+                    self.comms.tcp_port = ip_port
+                    self.comms.connection = connection
+                    self.comms.connection.close()
         else:
             raise Exception('The only valid values of comm_method are "tcp" and "serial"')
 
@@ -317,8 +328,8 @@ class NEC(ProjectorInterface):
         """Destructor.  Ensure that if a serial or socket interface was opened,
         it is closed whenever we destroy this object
         """
-        if self.interface is not None:
-            self.interface.connection.close()
+        if self.comms is not None:
+            self.comms.connection.close()
 
     def __cmd(self, cmd=Command.STATUS, *params, checksum_required=False):
         """Executes a given command, optionally with parameters and a checksum
@@ -349,19 +360,19 @@ class NEC(ProjectorInterface):
                 cmd_str += bytes([checksum(cmd_str)])
 
         try:
-            if self.interface is not None:
-                if self.interface.tcp_ip is not None:
-                    self.interface.connection = create_connection(
-                        (self.interface.tcp_ip, self.interface.tcp_port)
+            if self.comms is not None:
+                if self.comms.tcp_ip is not None:
+                    self.comms.connection = create_connection(
+                        (self.comms.tcp_ip, self.comms.tcp_port)
                     )
-                elif self.interface.serial_device is not None:
-                    self.interface.connection.open()
+                elif self.comms.serial_device is not None:
+                    self.comms.connection.open()
 
-                self.interface.send(cmd_str)
-                result = self.interface.recv(RECVBUF)
+                self.comms.send(cmd_str)
+                result = self.comms.recv(RECVBUF)
 
                 # close the connection after each command
-                self.interface.connection.close()
+                self.comms.connection.close()
 
                 # first byte's high order nibble: '2'==success, 'a'==error
                 if Byte(result[0]).high_nibble_char == 'a':
@@ -669,7 +680,6 @@ class NEC(ProjectorInterface):
                     }
                 }
                 return result
-
 
     def get_model(self) -> str:
         """Return a string representing the model name or series"""

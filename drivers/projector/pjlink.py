@@ -12,23 +12,9 @@ class PJLink(ProjectorInterface):
     https://pjlink.jbmia.or.jp/english/data_cl2/PJLink_5-1.pdf
     """
 
-    # socket interface
-    interface = None
-
-    # number of lamps this projector has
-    lamp_count = None
-
-    # available inputs
-    inputs_available = set()
-
-    # pjlink class - 1 or 2
-    pjlink_class = None
-
-    # model name
-    model = None
-
-    class Interface(ProjectorInterface.Interface):
-        """Communication interface"""
+    class Comms(ProjectorInterface.Comms):
+        """Communication interface
+        """
         # socket connection
         connection = None
         tcp_ip = None
@@ -50,7 +36,8 @@ class PJLink(ProjectorInterface):
         CLASS_2 = 2
 
     class Input(ProjectorInterface.Input):
-        """Inputs for switching"""
+        """Standard inputs for switching
+        """
         RGB_1 = b'11'
         RGB_2 = b'12'
         RGB_3 = b'13'
@@ -65,6 +52,8 @@ class PJLink(ProjectorInterface):
         NETWORK = b'51'
 
     class Command(ProjectorInterface.Command):
+        """Available commands that work on most models
+        """
         # - class 1 commands
         # - parameterless commands
         POWER_ON = b'%1POWR 1\x0d'
@@ -81,9 +70,11 @@ class PJLink(ProjectorInterface):
         # - commands with parameters
         SWITCH_INPUT = b'%1INPT '  # + input number + \x0d
 
+    # unneeded but here for consistency to match the NEC driver
     class Lamp(ProjectorInterface.Lamp):
         pass
 
+    # same
     class LampInfo(ProjectorInterface.LampInfo):
         pass
 
@@ -128,6 +119,18 @@ class PJLink(ProjectorInterface):
     def __init__(self, ip_address=None, ip_port=4352):
         """Create a PJLink projector driver instance and initialize a connection to the
         projector over TCP (default port 4352).
+
+        PJLink instance variables set here:
+
+        comms :             Socket communication interface
+        lamp_count :        Number of lamps this projector has.
+                            Inferred from data returned by the "%1LAMP ?" PJLink command
+        inputs_available :  Set of available inputs
+                            Returned by the "%1INPT ?" PJLink command
+        model :             Model name or series
+                            Returned by the "%1NAME ?" PJLink command
+        pjlink_class :      PJ-Link class (1|2)
+                            Returend by the "%1CLSS ?" PJLink command
         """
         if ip_address is not None and ip_port is not None:
             try:
@@ -135,11 +138,11 @@ class PJLink(ProjectorInterface):
             except Exception as inst:
                 print(inst)
             else:
-                self.interface = self.Interface()
-                self.interface.tcp_ip = ip_address
-                self.interface.tcp_port = ip_port
-                self.interface.connection = conn
-                self.interface.connection.close()
+                self.comms = self.Comms()
+                self.comms.tcp_ip = ip_address
+                self.comms.tcp_port = ip_port
+                self.comms.connection = conn
+                self.comms.connection.close()
 
                 # go ahead and get some basic info...
 
@@ -163,8 +166,8 @@ class PJLink(ProjectorInterface):
         """Destructor.  Ensure that if a serial or socket interface was opened,
         it is closed whenever we destroy this object
         """
-        if self.interface is not None:
-            self.interface.connection.close()
+        if self.comms is not None:
+            self.comms.connection.close()
 
     def __cmd(self, cmd=Command.POWER_STATUS, *params):
         """Excutes a given command, optionally with parameters
@@ -190,19 +193,20 @@ class PJLink(ProjectorInterface):
             cmd_str += b'\x0d'
 
         try:
-            if self.interface is not None:
-                if self.interface.tcp_ip is not None:
-                    self.interface.connection = create_connection(
-                        (self.interface.tcp_ip, self.interface.tcp_port)
+            if self.comms is not None:
+                if self.comms.tcp_ip is not None:
+                    self.comms.connection = create_connection(
+                        (self.comms.tcp_ip, self.comms.tcp_port)
                     )
 
-                self.interface.send(cmd_str)
-                # first thing returned is always some junk ("%1PJLINK 0")
-                junk_data = self.interface.recv(RECVBUF)
-                result = self.interface.recv(RECVBUF)
+                self.comms.send(cmd_str)
+                # first thing returned is always some junk
+                # ("%1PJLINK" followed by 0 or 1 depending on whether authentication is enabled)
+                junk_data = self.comms.recv(RECVBUF)
+                result = self.comms.recv(RECVBUF)
 
                 # close the connection after each command
-                self.interface.connection.close()
+                self.comms.connection.close()
 
                 return result
 
@@ -259,7 +263,8 @@ class PJLink(ProjectorInterface):
         return self.get_power_status()
 
     def power_toggle(self):
-        """Toggles the power on/off"""
+        """Toggles the power on/off
+        """
         power_status = self.get_power_status()
         if power_status is not None:
             if "power on" in power_status.casefold():
@@ -270,13 +275,9 @@ class PJLink(ProjectorInterface):
                 # status is cooling down or warming up, ignore this request
                 return False
 
-    def get_input_set(self, print_=False):
+    def get_input_set(self):
         """Return a set of Input enum members matching the available
         input terminals.  I wish the NEC native driver could do this.
-
-        Parameters
-        ----------
-        print_          : Whether to print the name of each Input member found
         """
         result = self.__cmd(cmd=self.Command.INPUT_LIST)
         if result is not None:
@@ -291,8 +292,6 @@ class PJLink(ProjectorInterface):
                 for i in ins:
                     if i in input_values:
                         inputs_available.add(self.Input(i))
-                        if print_:
-                            print(self.Input(i).name)
 
                 return inputs_available
 
