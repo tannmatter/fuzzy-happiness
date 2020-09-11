@@ -127,8 +127,6 @@ class PJLink(ProjectorInterface):
                             Inferred from data returned by the "%1LAMP ?" PJLink command
         inputs_available :  Set of available inputs
                             Returned by the "%1INPT ?" PJLink command
-        model :             Model name or series
-                            Returned by the "%1NAME ?" PJLink command
         pjlink_class :      PJ-Link class (1|2)
                             Returend by the "%1CLSS ?" PJLink command
         """
@@ -158,9 +156,6 @@ class PJLink(ProjectorInterface):
 
                 # get what PJLink class we support
                 self.pjlink_class = self.get_class()
-
-                # get model name
-                self.model = self.get_model()
 
     def __del__(self):
         """Destructor.  Ensure that if a serial or socket interface was opened,

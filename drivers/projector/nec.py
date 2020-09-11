@@ -289,13 +289,9 @@ class NEC(ProjectorInterface):
         inputs_available : Set of available inputs.
                            Must be specified by configuration data as NEC has no command to determine this
                            Defaults to empty set
-        model :            Model name or series.
-                           Can be specified by configuration data or retrieved and set through the get_model() method
-                           Defaults to empty str
         """
         self.lamp_count = 1
         self.inputs_available = set()
-        self.model = ""
 
         if comm_method == 'serial':
             try:

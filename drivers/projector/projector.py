@@ -79,3 +79,18 @@ class ProjectorInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def errors(self) -> list:
         raise NotImplementedError
+
+
+class Projector:
+    """A light wrapper encapsulating various data about a projector: its model,
+    number of lamps, its address (TCP/IP or serial tty), a reference to its current
+    driver/interface, and a list of other drivers it's compatible with if we need
+    to reconnect to it and do something with this projector that the current driver
+    isn't capable of.
+    """
+    def __init__(self):
+        self.interface = None
+        self.address = None
+        self.drivers_available = []
+        self.model = None
+
