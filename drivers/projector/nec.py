@@ -547,30 +547,6 @@ class NEC(ProjectorInterface):
                 # return the new input selected
                 return input_
 
-    def get_status(self) -> dict:
-        """Return information about what source is selected, and status of
-        power, display, picture mute, sound mute, and picture freeze
-        """
-        data = self.__cmd(self.Command.STATUS)
-        if data is not None:
-            if len(data) == 2:
-                # same situation as above...
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                # but wait... there's more! (than 2 bytes)
-                result = {
-                    'status': {
-                        'power': self.status[6][data[6]],
-                        'display': self.status[7][data[7]],
-                        'source': self.status[tuple(data[8:10])],
-                        'video_type': self.status[10][data[10]],
-                        'video_mute': self.status[11][data[11]],
-                        'sound_mute': self.status[12][data[12]],
-                        'video_freeze': self.status[14][data[14]]
-                    }
-                }
-                return result
-
     def get_errors(self) -> list:
         """Return information about any errors the projector is currently experiencing"""
         data = self.__cmd(self.Command.GET_ERRORS)
@@ -644,9 +620,44 @@ class NEC(ProjectorInterface):
     def av_mute(self):
         return self.get_mute_status()
 
+    def get_model(self) -> str:
+        """Return a string representing the model name or series"""
+        data = self.__cmd(self.Command.GET_MODEL)
+        if data is not None:
+            if len(data) == 2:
+                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+            else:
+                # data starts at 6th byte
+                model = data[5:37].decode('utf-8').rstrip('\x00')
+                return model
+
     #
-    # Typically unused methods past here
+    # Methods not shared with PJLink past here
     #
+
+    def get_status(self) -> dict:
+        """Return information about what source is selected, and status of
+        power, display, picture mute, sound mute, and picture freeze
+        """
+        data = self.__cmd(self.Command.STATUS)
+        if data is not None:
+            if len(data) == 2:
+                # same situation as above...
+                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+            else:
+                # but wait... there's more! (than 2 bytes)
+                result = {
+                    'status': {
+                        'power': self.status[6][data[6]],
+                        'display': self.status[7][data[7]],
+                        'source': self.status[tuple(data[8:10])],
+                        'video_type': self.status[10][data[10]],
+                        'video_mute': self.status[11][data[11]],
+                        'sound_mute': self.status[12][data[12]],
+                        'video_freeze': self.status[14][data[14]]
+                    }
+                }
+                return result
 
     def get_basic_info(self) -> dict:
         """Return projector model information, lamp hours, & filter hours.
@@ -689,17 +700,6 @@ class NEC(ProjectorInterface):
                     }
                 }
                 return result
-
-    def get_model(self) -> str:
-        """Return a string representing the model name or series"""
-        data = self.__cmd(self.Command.GET_MODEL)
-        if data is not None:
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                # data starts at 6th byte
-                model = data[5:37].decode('utf-8').rstrip('\x00')
-                return model
 
     def get_input(self) -> str:
         """Return a text string representing what input terminal the projector appears to be set to."""

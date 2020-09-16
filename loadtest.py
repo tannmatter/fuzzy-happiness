@@ -9,15 +9,8 @@ from drivers.projector.projector import Projector
 
 
 if __name__ == "__main__":
-    configs = ['rooms/BB0115.json', 'rooms/BB0205.json', 'rooms/BB0115_alt.json']
-    # First tried to do rooms = pjs = [] but that does not work in python!!!
-    # That will make rooms and pjs point to the same memory which will corrupt our loop below.
-    # Remember this as you learn the weird quirks about python!
-    # Took several hours to locate this bug and squash it.
-    # In other words: python doesn't have variables.  IT HAS NAMES.
-    # https://realpython.com/pointers-in-python/
-    rooms = []
-    pjs = []
+    configs = ['rooms/BB0115.json', 'rooms/BB0205.json']
+    rooms, pjs = [], []
     for file in configs:
         with open(file, 'r') as f:
             room = json.load(f)
@@ -98,8 +91,8 @@ if __name__ == "__main__":
         if "lamps" in pj_sub_key:
             pj.interface.lamp_count = pj_sub_key['lamps']
 
+        # get available inputs
         if "inputs" in pj_sub_key:
-            # get available inputs
             for inp in pj_sub_key['inputs']:
                 # find the matching input listed in the driver module & add to the set of available inputs
                 pj.interface.inputs_available.add(pj.interface.Input[inp])
