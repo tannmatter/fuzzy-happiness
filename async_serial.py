@@ -1,45 +1,61 @@
 import asyncio
-ip_address = '161.31.67.104'
-ip_port = 5000
+from serial_asyncio import create_serial_connection
+serial_device = '/dev/ttyUSB1'
+serial_baudrate = 115200
+serial_timeout = 0.2
 
 
-class AsyncIOReaderWriter:
-    def __init__(self, reader=None, writer=None):
-        self.reader = reader
-        self.writer = writer
+class SerialAsyncIOReaderWriter(asyncio.Protocol):
+    def __init__(self, loop):
+        self.loop = loop
 
-    async def get_responses(self):
-        if self.reader:
-            while True:
-                data = await self.reader.read()
-                print("Data received: {!r}".format(data.decode()))
+    def connection_made(self, transport):
+        self.transport = transport
+        print('Serial writer connection created to ' + serial_device)
+        print("Type 'quit' or 'exit' to quit")
+
+    def connection_lost(self, exc):
+        if exc is None:
+            print('EOF received')
+        else:
+            print('Connection terminated')
+
+    def send(self, data):
+        if data:
+            self.transport.write(data.encode())
 
     async def get_commands(self):
-        loop = asyncio.get_running_loop()
         while True:
             # get inputs forever on a separate thread
             await asyncio.sleep(1)
-            cmd = await loop.run_in_executor(None, input, "Command: ")
-            if cmd == "quit":
+            cmd = await self.loop.run_in_executor(None, input, "Command: ")
+            if cmd.casefold() == "quit" or cmd.casefold() == "exit":
                 break
             else:
-                if self.writer:
-                    self.writer.write(cmd.encode())
-                    await self.writer.drain()
-        loop.stop()
+                self.send(cmd)
+        self.loop.stop()
+
+    def data_received(self, data):
+        print('Data received: {!r}'.format(data.decode()))
+        # print(self.parse(data.decode()))
+
+# do away with this class above and replace it with something simpler encapsulating an aioserial object
 
 
 async def main():
-    loop = asyncio.get_running_loop()
+    loop = asyncio.get_event_loop()
 
-    print('Attempting a connection to ' + ip_address + ':' + str(ip_port))
-    reader, writer = await asyncio.open_connection(
-        host=ip_address,
-        port=ip_port
-    )
-    rw = AsyncIOReaderWriter(reader, writer)
+    # TODO: try aioserial
+    # import aioserial
+    # task = asyncio.create_task(an_awaitable_method_that_starts_an_aioserial_object_listening_for_serial_data)
+    # await some_method_that_starts_receiving_commands_to_send
+    # await task
+
+    print('Attempting a connection to ' + serial_device)
+    rw = SerialAsyncIOReaderWriter(loop)
+    reader, writer = create_serial_connection(loop, lambda: rw, serial_device, serial_baudrate)
+
     await rw.get_commands()
-    await rw.get_responses()
 
 
 asyncio.run(main())
