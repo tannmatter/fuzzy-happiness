@@ -1,3 +1,0 @@
-pjlink: 4352
-NEC native: 7142
-
