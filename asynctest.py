@@ -1,5 +1,5 @@
 import asyncio
-ip_address = '161.31.67.111'
+ip_address = '127.0.0.1'
 ip_port = 5000
 
 
@@ -37,7 +37,9 @@ class Client(asyncio.Protocol):
         231: "<FACTORY RESET MINUS ETHERNET>", 240: "<MODE SET - MODE 1 - {}>",
         241: "<MODE SET - MODE 2 - {}>", 242: "<MODE SET - MODE 3 - {}>",
         243: "<MODE SET - MODE 4 - {}>", 244: "<MODE SET - MODE 5 - {}>",
-        250: "<MENU POSITION {}>", 251: "<OSD TIMEOUT {}>"
+        250: "<MENU POSITION {}>", 251: "<OSD TIMEOUT {}>",
+        # ...
+        450: "<INPUT SIGNAL {}>", 451: "<OUTPUT RESOLUTION {}>"  # same as 80 for some reason
 
     }
     bools = {
@@ -244,12 +246,33 @@ class Client(asyncio.Protocol):
             4: "60 SEC",
             5: "90 SEC",
             6: "OFF"
+        },
+        # ...
+        450: {
+            0: "640X480@60Hz", 1: "640x480@67Hz (Mac13)", 2: "640x480@72Hz", 3: "640x480@75Hz",
+            4: "640x480@85Hz", 5: "720x400@70Hz", 6: "720x400@85Hz", 7: "800x600@56Hz",
+            8: "800x600@60Hz", 9: "800x600@72Hz", 10: "800x600@75Hz", 11: "800x600@85Hz",
+            12: "832x624@75Hz (Mac16)", 13: "1024x768@60Hz", 14: "1024x768@70Hz", 15: "1024x768@75Hz",
+            16: "1024x768@75Hz (Mac19)", 17: "1024x768@85Hz", 18: "1024x800@84Hz (Sun)", 19: "1152x864@75Hz",
+            20: "1152x870@75Hz (Mac21)", 21: "1152x900@66Hz (Sun)", 22: "1152x900@76Hz (Sun)", 23: "1280x720@60Hz",
+            24: "1280x800@60Hz (RB)", 25: "1280x800@60Hz", 26: "1280x960@60Hz", 27: "1280x960@85Hz",
+            28: "1280x768@60Hz (RB)", 29: "1280x768@60Hz", 30: "1280x1024@60Hz", 31: "1280x1024@75Hz",
+            32: "1280x1024@76Hz (Sun)", 33: "1280x1024@85Hz", 34: "1366x768@60Hz (RB)", 35: "1366x768@60Hz",
+            36: "1440x900@60Hz (RB)", 37: "1440x900@60Hz", 38: "1400x1050@60Hz", 39: "1400x1050@75Hz",
+            40: "1600x900@60Hz (RB)", 41: "1600x1200@60Hz", 42: "1680x1050@60Hz (RB)", 43: "1680x1050@60Hz",
+            44: "1920x1080@60Hz", 45: "1920x1200@60Hz (RB)", 46: "2048x1080@50Hz", 47: "2048x1080@60Hz",
+            100: "CUSTOM 1", 101: "CUSTOM 2", 102: "CUSTOM 3", 103: "CUSTOM 4",
+            150: "480i60Hz", 151: "480p60Hz", 152: "576i50Hz", 153: "576p@50Hz", 154: "720p50Hz", 155: "720p60Hz",
+            156: "1080i50Hz", 157: "1080i60Hz", 158: "1080p24Hz", 159: "1080p50Hz", 160: "1080p60Hz",
+            200: "NTSC", 201: "PAL", 202: "PAL-M", 203: "PAL-N", 204: "NTSC4.43", 205: "SECAM", 206: "PAL-60",
+            250: "NO INPUT DETECTED", 251: "NOT SUPPORTED"
         }
-
     }
 
     def __init__(self, loop):
         self.loop = loop
+        # 451 is duplicate function of 80
+        self.data[451] = self.data[80]
 
     def connection_made(self, transport):
         self.transport = transport
