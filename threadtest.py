@@ -2,9 +2,6 @@ from threading import Thread, Event
 from time import sleep
 from serial import Serial
 
-# TODO: try this on a machine other than the Raspberry Pi to see if it works any differently.
-# None of the approaches I have tried work full duplex on the RPi... threading, asyncio, nothing.
-
 
 def listen(serial: Serial, event: Event):
     print("Starting listener...")
@@ -25,11 +22,18 @@ def talk(serial, event, listener):
     print("Starting talker...")
     print("Type 'quit' or 'exit' to quit...")
     while True:
+        # our commands must end in \r and python will reinterpret inputs with '\r' as '\\r'
+        # solution: replace() or just don't type \r and let the function add it for us.
+        # this works now!
         cmd = input("Enter command: \n")
         if cmd.casefold() == "quit" or cmd.casefold() == "exit":
             break
-        else:
-            serial.write(cmd.encode())
+        elif cmd.endswith('\\r'):
+            cmd = cmd.replace('\\r', '\r')
+        elif '\r' not in cmd:
+            cmd = cmd + '\r'
+        serial.write(cmd.encode())
+
     event.clear()
     serial.close()
     listener.join()
