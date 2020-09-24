@@ -1,5 +1,5 @@
 import asyncio
-ip_address = '127.0.0.1'
+ip_address = '161.31.67.111'
 ip_port = 5000
 
 
@@ -294,6 +294,20 @@ class Client(asyncio.Protocol):
             self.transport.write(data.encode())
 
     def parse(self, data: str):
+        # quick way out - if response contains ':' it doesn't fit the pattern we're looking for
+        # it's probably 'MAC:' or 'IP:' or "FIRMWARE VERSION:' or
+        # some other message during bootup
+        if ':' in data:
+            return data
+
+        # another special case where it rattles off the firmware version numbers during boot.
+        # it looks like this:
+        # b'\r\nVTR1.21 \r\nVTX1.07 \r\nVPD1.10 \r\nVTO1.01 \r\nVTN1.00 \r\nVPC1.16\r\n\r\n>'
+        # yeah, we're not interested in pretty much any of that but the main firmware is the first one
+        elif 'VTR' in data:
+            return "<FIRMWARE VERSION {}>".format(data.split()[0].strip())
+
+        # now for the normal responses...
         # chop off the '>' and all white space, then split by whitespace
         data_parts = data.replace('>', '').rstrip().split()
 
