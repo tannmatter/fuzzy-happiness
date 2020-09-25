@@ -1,17 +1,22 @@
 import asyncio
+import sys
 from threading import Thread, Event
-from time import sleep
+from time import time, sleep
 from serial_asyncio import create_serial_connection
 
-
-serial_device = '/dev/ttyUSB1'
-serial_baudrate = 115200
+from drivers.switcher.switcher import SwitcherInterface
 
 
-class SerialAsyncIOReaderWriter(asyncio.Protocol):
-    """On the other end of the serial pipe is a Kramer VP-734 switcher which communicates
-    in full duplex mode.
-    """
+class KramerVP734(SwitcherInterface):
+    class Input(SwitcherInterface.Input):
+        RGB_1 = 0
+        RGB_2 = 1
+        DIGITAL_1 = 2
+        DIGITAL_2 = 3
+        DIGITAL_3 = 4
+        DIGITAL_4 = 5
+        DP_1 = 6
+
     functions = {
         0: "<MENU>", 1: "<UP>", 2: "<DOWN>", 3: "<LEFT>", 4: "<RIGHT>",
         5: "<ENTER>", 6: "<RESET {}>",
@@ -277,29 +282,51 @@ class SerialAsyncIOReaderWriter(asyncio.Protocol):
         }
     }
 
-    def __init__(self, running):
-        self.transport = None
-        self.read_buffer = b''
-        self.running = running
-        # 451 is duplicate function of 80
-        self.data[451] = self.data[80]
+    def __init__(self, serial_device='/dev/ttyUSB1', serial_baud_rate=115200, comm_method='serial',
+                 ip_address=None, ip_port=5000, sw=None):
+        if sw is not None:
+            try:
+                self.switcher = sw
+                self.loop = asyncio.get_event_loop()
+                self.transport = None
+                self.read_buffer = b''
+
+                self._power_status = None
+                self._input_status = None
+                self._av_mute = False
+
+                # function 451 is a duplicte of function 80
+                self.data[451] = self.data[80]
+                if comm_method == 'serial':
+                    transport, protocol = await create_serial_connection(
+                        self.loop,
+                        self,
+                        serial_device,
+                        baudrate=serial_baud_rate
+                    )
+                    self.reader_thread = Thread(target=self.read_response_serial)
+                    self.reader_thread.start()
+            except Exception as inst:
+                print(inst)
+                sys.exit(1)
+            else:
+                self.running = Event()
+                self.running.set()
 
     def connection_made(self, transport):
         self.transport = transport
-        print('Serial connection created to ' + serial_device)
-        print("Type 'quit' or 'exit' to quit")
-        print("Type 'print' or 'dump' to print the read buffer contents")
 
     def connection_lost(self, exc):
         print('Connection terminated')
-        self.transport.loop.stop()
+        self.running.clear()
+        self.loop.stop()
 
     def data_received(self, data):
         """Tack any data received onto the read buffer so the worker thread can parse it.
         """
         self.read_buffer = self.read_buffer + data
 
-    def read_response(self):
+    def read_response_serial(self):
         """Read a single response ending with '\r\n>' and pass it to the parser
         """
         while self.running.is_set():
@@ -314,8 +341,9 @@ class SerialAsyncIOReaderWriter(asyncio.Protocol):
                     # skip over the '\r\n>' and point the read buffer at the next response if present
                     self.read_buffer = self.read_buffer[response_end+3:]
                     # only parse the response, not the original query
+                    # log(response)
                     if not response.startswith(b'Y'):
-                        print(self.parse(response.decode()))
+                        self.parse(response.decode())
             sleep(0.25)
 
     def parse(self, data: str):
@@ -327,14 +355,16 @@ class SerialAsyncIOReaderWriter(asyncio.Protocol):
         # quick way out - if response contains ':' it doesn't fit the pattern we're looking for
         # it's probably 'MAC:' or 'IP:' or some other message during bootup
         if ':' in data:
-            return data
+            # log(data)
+            return
 
         # another special case where it rattles off the firmware version numbers during boot.
         # it looks like this:
         # b'\r\nVTR1.21 \r\nVTX1.07 \r\nVPD1.10 \r\nVTO1.01 \r\nVTN1.00 \r\nVPC1.16\r\n\r\n>'
         # yeah, we're not interested in pretty much any of that but the main firmware is the first one
         elif 'VTR' in data:
-            return "<FIRMWARE VERSION {}>".format(data.split()[0].strip())
+            # log("<FIRMWARE VERSION {}>".format(data.split()[0].strip()))
+            return
 
         # now for the normal(ish) responses...
         # split by whitespace
@@ -360,73 +390,81 @@ class SerialAsyncIOReaderWriter(asyncio.Protocol):
                 # special case for function 177 - auto switch input priority has 2 params
                 if len(data_parts) > 4 and func == 177:
                     param2 = int(data_parts[4])
-                    return self.functions[func].format(
-                        self.data[func][3][param], self.data[func][4][param2]
-                    )
+                    # log self.functions[func].format(
+                    #    self.data[func][3][param], self.data[func][4][param2]
+                    # )
+                    return
 
                 # if that param is defined for the function, return the formatted str
                 # with the defined value of the param
                 elif func in self.data and param in self.data[func]:
-                    return self.functions[func].format(self.data[func][param])
-                # otherwise, just return the formatted str for the function with the
+                    # log(self.functions[func].format(self.data[func][param]))
+                    # this is where the magic should happen for tracking our state
+
+                    # video mute set/get
+                    if func == 8:
+                        self._av_mute = bool(param)
+                    # power set/get (will only see on get if power is off, with power on it simply returns "-")
+                    # see special case below
+                    elif func == 10:
+                        self._power_status = bool(param)
+                    # input set/get
+                    elif func == 30:
+                        self._input_status = self.Input(param)
+
+                    return
+                # otherwise, just log the formatted str for the function with the
                 # bare value of the param inserted
                 else:
-                    return self.functions[func].format(param)
+                    # log(self.functions[func].format(param))
+                    return
 
-            # response had no parameters, return just the function called
+            # response had no parameters, log just the function called
             else:
-                return self.functions[func]
+                # log(self.functions[func])
+                return
 
         # response is just "-", this is a weird response that comes when you ask
         # the switcher for the power status while it's powered on.  We expect to
         # receive 'Z 1 10 1\r\n' here but the VP-734 is quirky...
         elif len(data_parts) == 1 and data_parts[0] == "-":
-            return "<POWER ON>"
+            self._power_status = True
+            return
 
         # or data_parts[2] not listed in our defined functions,
         # must be something we didn't care enough to implement
         else:
-            return "<UNIMPLEMENTED>"
+            # log("Unimplemented function: Response was {}".format(data))
+            return
 
-    def send(self, data):
-        if data:
-            self.transport.write(data.encode())
+    def power_on(self) -> None:
+        # this will trigger data received, which will in turn trigger the parser and record our power state switch
+        self.transport.write(b'Y 0 10 1\r')
 
-    async def get_commands(self):
-        while True:
-            # get inputs forever on a separate thread
-            await asyncio.sleep(1)
-            cmd = await self.transport.loop.run_in_executor(None, input, "Command: ")
-            if cmd.casefold() == "quit" or cmd.casefold() == "exit":
-                break
-            elif cmd.casefold() == "print" or cmd.casefold() == "dump":
-                print(self.read_buffer)
-            elif cmd.endswith('\\r'):
-                cmd = cmd.replace('\\r', '\r')
-            elif '\r' not in cmd:
-                cmd = cmd + '\r'
-            self.send(cmd)
+    def power_off(self) -> None:
+        # this will trigger data received, which will in turn trigger the parser and record our power state switch
+        self.transport.write(b'Y 0 10 0\r')
 
-        self.running.clear()
-        self.transport.loop.stop()
+    def select_input(self, input_=Input.DIGITAL_1) -> Input:
+        if input_ in self.Input.__members__:
+            # this will trigger data received, which will in turn trigger the parser and record our input switch
+            self.transport.write(b'Y 0 30 ' + bytes([input_.value]) + b'\r')
+            return self._input_status
 
+    @property
+    def power_status(self) -> bool:
+        # this will trigger data received, which will in turn trigger the parser and update self._power_status
+        self.transport.write(b'Y 1 10\r')
+        return self._power_status
 
-async def main():
-    loop = asyncio.get_running_loop()
-    run_event = Event()
-    run_event.set()
+    @property
+    def input_status(self) -> Input:
+        # this will trigger data received, which will in turn trigger the parser and update self._input_status
+        self.transport.write(b'Y 1 30\r')
+        return self._input_status
 
-    print('Attempting to open serial device: ' + serial_device)
-    rw = SerialAsyncIOReaderWriter(run_event)
-    transport, protocol = await create_serial_connection(
-        loop,
-        lambda: rw,
-        serial_device,
-        baudrate=serial_baudrate
-    )
-    reader_thread = Thread(target=rw.read_response)
-    reader_thread.start()
-    await rw.get_commands()
-
-
-asyncio.run(main())
+    @property
+    def av_mute(self) -> bool:
+        # this will trigger data received, which will in turn trigger the parser and update self._input_status
+        self.transport.write(b'Y 1 8\r')
+        return self._av_mute

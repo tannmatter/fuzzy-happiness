@@ -2,6 +2,19 @@ import asyncio
 ip_address = '161.31.67.111'
 ip_port = 5000
 
+# The VP-734 is very quirky.  When you power it off through the LAN connection, it will lose its
+# connection, and in order to reestablish communication with it, you will need to close the socket
+# and open another.  Additionally, if DHCP is enabled, it seems to fail to renew its DHCP lease
+# when it expires.  If it's given a DHCP lease in the morning, the next morning it will report
+# having the same IP address it was using the previous day, but it will not respond on that address.
+# You will have to power the unit off and back on, which seems to force it to get another lease.
+# None of this applies when connected to the DB9 serial port.  RS-232 does not appear to differ
+# whether the unit is powered off or on.  For this reason, we'll try to use RS-232 with this unit.
+
+# Another quirk is that when communicating over LAN, the response only consists of the 'Z .. .. ..'
+# response part, not the 'Y .. .. ..' request part.  But over serial, both the request and response
+# are returned by the switcher.
+
 
 class Client(asyncio.Protocol):
 

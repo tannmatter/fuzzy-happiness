@@ -36,11 +36,11 @@ class SwitcherInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def power_on(self) -> bool:
+    def power_on(self) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def power_off(self) -> bool:
+    def power_off(self) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -49,7 +49,7 @@ class SwitcherInterface(metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def power_status(self) -> str:
+    def power_status(self) -> bool:
         raise NotImplementedError
 
     @property
