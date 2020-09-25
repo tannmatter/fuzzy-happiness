@@ -1,8 +1,5 @@
-import asyncio
 import sys
-from threading import Thread, Event
-from time import time, sleep
-from serial_asyncio import create_serial_connection
+from serial import Serial
 
 from drivers.switcher.switcher import SwitcherInterface
 
@@ -284,73 +281,39 @@ class KramerVP734(SwitcherInterface):
 
     def __init__(self, serial_device='/dev/ttyUSB1', serial_baud_rate=115200, comm_method='serial',
                  ip_address=None, ip_port=5000, sw=None):
-        if sw is not None:
-            try:
-                self.switcher = sw
-                self.loop = asyncio.get_event_loop()
-                self.transport = None
-                self.read_buffer = b''
+        try:
+            self.switcher = sw
+            self.transport = None
+            self.read_buffer = b''
 
-                self._power_status = None
-                self._input_status = None
-                self._av_mute = False
+            self._power_status = None
+            self._input_status = None
+            self._av_mute = None
 
-                # function 451 is a duplicte of function 80
-                self.data[451] = self.data[80]
-                if comm_method == 'serial':
-                    transport, protocol = await create_serial_connection(
-                        self.loop,
-                        self,
-                        serial_device,
-                        baudrate=serial_baud_rate
-                    )
-                    self.reader_thread = Thread(target=self.read_response_serial)
-                    self.reader_thread.start()
-            except Exception as inst:
-                print(inst)
-                sys.exit(1)
-            else:
-                self.running = Event()
-                self.running.set()
+            if comm_method == 'serial':
+                self.transport = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=0.5)
 
-    def connection_made(self, transport):
-        self.transport = transport
-
-    def connection_lost(self, exc):
-        print('Connection terminated')
-        self.running.clear()
-        self.loop.stop()
-
-    def data_received(self, data):
-        """Tack any data received onto the read buffer so the worker thread can parse it.
-        """
-        self.read_buffer = self.read_buffer + data
+        except Exception as inst:
+            print(inst)
+            sys.exit(1)
 
     def read_response_serial(self):
-        """Read a single response ending with '\r\n>' and pass it to the parser
+        """Read responses starting with 'Z' and  ending with '\r\n>' and pass them to the parser
         """
-        while self.running.is_set():
-            if len(self.read_buffer) > 0:
-                raw_response = self.read_buffer
-                response_end = self.read_buffer.find(b'\r\n>')
-                if response_end != -1:
-                    response = self.read_buffer[0:response_end]
-                    # DEBUG
-                    # print("Raw response: {}".format(raw_response))
-                    # print("Data received: {}".format(response.decode()))
-                    # skip over the '\r\n>' and point the read buffer at the next response if present
-                    self.read_buffer = self.read_buffer[response_end+3:]
-                    # only parse the response, not the original query
-                    # log(response)
-                    if not response.startswith(b'Y'):
-                        self.parse(response.decode())
-            sleep(0.25)
+        data = self.transport.read(1000)
+        data_parts = data.split(b'\r\n>')
+        if len(data_parts) > 0:
+            index = 0
+            while index < len(data_parts):
+                response = data_parts[index]
+                # print(response)
+                # send every response we care about off to be interpreted
+                if response.startswith(b'Z') or response == b'-':
+                    self.parse(response.decode())
+                index += 1
 
     def parse(self, data: str):
-        """Parse and return the meaning of the response.
-        :param data: (str) response to be parsed
-        :return: a string representing the meaning of the reponse or "<UNIMPLEMENTED>" for
-        functions we don't care about
+        """Parse a response and set internal state
         """
         # quick way out - if response contains ':' it doesn't fit the pattern we're looking for
         # it's probably 'MAC:' or 'IP:' or some other message during bootup
@@ -411,6 +374,7 @@ class KramerVP734(SwitcherInterface):
                     # input set/get
                     elif func == 30:
                         self._input_status = self.Input(param)
+                        # print("<input selected: {}".format(self.Input(param)))
 
                     return
                 # otherwise, just log the formatted str for the function with the
@@ -438,33 +402,45 @@ class KramerVP734(SwitcherInterface):
             return
 
     def power_on(self) -> None:
-        # this will trigger data received, which will in turn trigger the parser and record our power state switch
+        self.transport.reset_input_buffer()
         self.transport.write(b'Y 0 10 1\r')
+        self.read_response_serial()
 
     def power_off(self) -> None:
-        # this will trigger data received, which will in turn trigger the parser and record our power state switch
+        self.transport.reset_input_buffer()
         self.transport.write(b'Y 0 10 0\r')
+        self.read_response_serial()
 
     def select_input(self, input_=Input.DIGITAL_1) -> Input:
-        if input_ in self.Input.__members__:
-            # this will trigger data received, which will in turn trigger the parser and record our input switch
-            self.transport.write(b'Y 0 30 ' + bytes([input_.value]) + b'\r')
-            return self._input_status
+        if isinstance(input_, self.Input):
+            self.transport.reset_input_buffer()
+            cmd = b'Y 0 30 ' + bytes(str(input_.value), 'ascii') + b'\r'
+            # print(cmd)
+            self.transport.write(cmd)
+            self.read_response_serial()
+            # it's necessary to query the switcher again here because of a quirk of this model...
+            # I don't understand why but when switching between RGB and HDMI or when switching between
+            # HDMI 1 and HDMI 2, the switcher does not emit a 'Z 0 30 ..' response, only a 'Y 0 30..'
+            # This causes the input switch response not to be parsed above and _input_status never gets updated
+            return self.input_status
 
     @property
     def power_status(self) -> bool:
-        # this will trigger data received, which will in turn trigger the parser and update self._power_status
+        self.transport.reset_input_buffer()
         self.transport.write(b'Y 1 10\r')
+        self.read_response_serial()
         return self._power_status
 
     @property
     def input_status(self) -> Input:
-        # this will trigger data received, which will in turn trigger the parser and update self._input_status
+        self.transport.reset_input_buffer()
         self.transport.write(b'Y 1 30\r')
+        self.read_response_serial()
         return self._input_status
 
     @property
     def av_mute(self) -> bool:
-        # this will trigger data received, which will in turn trigger the parser and update self._input_status
+        self.transport.reset_input_buffer()
         self.transport.write(b'Y 1 8\r')
+        self.read_response_serial()
         return self._av_mute
