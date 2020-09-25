@@ -1,7 +1,11 @@
 import sys
+import select
 from serial import Serial
+from socket import socket, create_connection, timeout
+
 
 from drivers.switcher.switcher import SwitcherInterface
+RECVBUF = 1024
 
 
 class KramerVP734(SwitcherInterface):
@@ -13,6 +17,47 @@ class KramerVP734(SwitcherInterface):
         DIGITAL_3 = 4
         DIGITAL_4 = 5
         DP_1 = 6
+
+    class Comms(SwitcherInterface.Comms):
+        def __init__(self):
+            self.connection = None
+            self.serial_device = None
+            self.serial_baud_rate = None
+            self.serial_timeout = None
+            self.tcp_ip = None
+            self.tcp_port = None
+            self.tcp_timeout = None
+
+        def send(self, data):
+            if isinstance(self.connection, Serial):
+                return self.connection.write(data)
+            elif isinstance(self.connection, socket):
+                return self.connection.send(data)
+
+        def recv(self, size=RECVBUF):
+            if isinstance(self.connection, Serial):
+                return self.connection.read(size)
+            elif isinstance(self.connection, socket):
+                return self.connection.recv(size)
+
+        def reset_input_buffer(self):
+            if isinstance(self.connection, Serial):
+                self.connection.reset_input_buffer()
+            elif isinstance(self.connection, socket):
+
+                in_socks = [self.connection]
+                out_socks, err_socks = [], []
+                while True:
+                    ins_available, outs_available, errs_available = select.select(
+                        in_socks,
+                        out_socks,
+                        err_socks,
+                        self.tcp_timeout
+                    )
+                    if len(ins_available) == 0:
+                        break
+                    else:
+                        junk = ins_available[0].recv(RECVBUF)
 
     functions = {
         0: "<MENU>", 1: "<UP>", 2: "<DOWN>", 3: "<LEFT>", 4: "<RIGHT>",
@@ -279,38 +324,106 @@ class KramerVP734(SwitcherInterface):
         }
     }
 
-    def __init__(self, serial_device='/dev/ttyUSB1', serial_baud_rate=115200, comm_method='serial',
-                 ip_address=None, ip_port=5000, sw=None):
+    def __init__(self, serial_device='/dev/ttyUSB1', serial_baud_rate=115200, serial_timeout=0.5, comm_method='serial',
+                 tcp_ip=None, tcp_port=5000, tcp_timeout=2.0, sw=None):
         try:
             self.switcher = sw
-            self.transport = None
-            self.read_buffer = b''
 
             self._power_status = None
             self._input_status = None
             self._av_mute = None
 
             if comm_method == 'serial':
-                self.transport = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=0.5)
+                self.comms = self.Comms()
+                self.comms.serial_device = serial_device
+                self.comms.serial_baud_rate = serial_baud_rate
+                self.comms.serial_timeout = serial_timeout
+                self.comms.connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=serial_timeout)
+                self.comms.connection.close()
+
+            elif comm_method == 'tcp' and tcp_ip is not None:
+                self.comms = self.Comms()
+                self.comms.tcp_ip = tcp_ip
+                self.comms.tcp_port = tcp_port
+                self.comms.tcp_timeout = tcp_timeout
+                self.comms.connection = create_connection((tcp_ip, tcp_port),
+                    timeout=tcp_timeout
+                )
+                self.comms.connection.close()
 
         except Exception as inst:
             print(inst)
             sys.exit(1)
 
-    def read_response_serial(self):
-        """Read responses starting with 'Z' and  ending with '\r\n>' and pass them to the parser
+    def open_connection(self):
+        if isinstance(self.comms.connection, Serial):
+            self.comms.connection.open()
+        elif isinstance(self.comms.connection, socket):
+            self.comms.connection = create_connection(
+                (self.comms.tcp_ip, self.comms.tcp_port),
+                timeout=self.comms.tcp_timeout
+            )
+
+    def close_connection(self):
+        self.comms.connection.close()
+
+    def read_response(self):
+        """Read responses starting with 'Z' and  ending with '\r\n>' and pass them to the parser.
+        This uses a blocking socket connection with a 2 second timeout
         """
-        data = self.transport.read(1000)
+        data = self.comms.recv()
+
+        # this prints a single b'Z .. .. ..\r\n>' statement returned from the switcher
+        print(data)
+
+        # if we print data_parts here, we can see it is a list of two byte strings:
+        # [b'Z 0 8 0', b'']
         data_parts = data.split(b'\r\n>')
+        print(data_parts)
+
+        # try to loop and get as much data as the switcher gives us
         if len(data_parts) > 0:
             index = 0
-            while index < len(data_parts):
+
+            # used to be "while index < len(data_parts):"
+            while data:
                 response = data_parts[index]
                 # print(response)
-                # send every response we care about off to be interpreted
-                if response.startswith(b'Z') or response == b'-':
-                    self.parse(response.decode())
+
+                # this is needed for the special case of switching inputs...
+                # we don't always get back a response beginning with 'Z 0 30'
+                # depending on which input we switched to/from
+                response_parts = response.split()
+                print(response_parts)
+
+                # wanna see magic?  delete the print statement.  that will cause the statement above it
+                # to fail to execute, causing the loop to be one iteration shorter.
+                # I don't understand... it's like Python just says 'eh, screw it' unless I wanna see what it returned?
+                data = self.comms.recv()
+                print(data)
+
+                # I also don't understand why this doesn't stop the loop.  not b'' is True
+                if not data:
+                    break
+
                 index += 1
+
+                # send every response we care about off to be interpreted
+                if response.startswith(b'Z') or response == b'-':  # '-' == power query while powered on
+                    self.parse(response.decode())
+
+                elif len(response_parts) > 3 and response_parts[2] == b'30':
+                    self.parse(response.decode())
+
+    def read_response2(self):
+        data = self.comms.recv()
+        data2 = self.comms.recv()
+        data3 = self.comms.recv()
+        data4 = self.comms.recv()
+        data5 = self.comms.recv()
+        data6 = self.comms.recv()
+        # ...
+        print("1: {}\n2: {}\n3: {}\n4: {}\n5: {}\n6: {}".format(data, data2, data3, data4, data5, data6))
 
     def parse(self, data: str):
         """Parse a response and set internal state
@@ -374,7 +487,7 @@ class KramerVP734(SwitcherInterface):
                     # input set/get
                     elif func == 30:
                         self._input_status = self.Input(param)
-                        # print("<input selected: {}".format(self.Input(param)))
+                        print("<input selected: {}".format(self.Input(param)))
 
                     return
                 # otherwise, just log the formatted str for the function with the
@@ -402,45 +515,62 @@ class KramerVP734(SwitcherInterface):
             return
 
     def power_on(self) -> None:
-        self.transport.reset_input_buffer()
-        self.transport.write(b'Y 0 10 1\r')
-        self.read_response_serial()
+        self.open_connection()
+        self.comms.reset_input_buffer()
+        self.comms.send(b'Y 0 10 1\r')
+        self.read_response()
+        self.close_connection()
 
     def power_off(self) -> None:
-        self.transport.reset_input_buffer()
-        self.transport.write(b'Y 0 10 0\r')
-        self.read_response_serial()
+        self.open_connection()
+        self.comms.reset_input_buffer()
+        self.comms.send(b'Y 0 10 0\r')
+        self.read_response()
+        self.close_connection()
 
     def select_input(self, input_=Input.DIGITAL_1) -> Input:
         if isinstance(input_, self.Input):
-            self.transport.reset_input_buffer()
+            self.open_connection()
+
+            # try taking this statement out!
+            self.comms.reset_input_buffer()
             cmd = b'Y 0 30 ' + bytes(str(input_.value), 'ascii') + b'\r'
             # print(cmd)
-            self.transport.write(cmd)
-            self.read_response_serial()
+            self.comms.send(cmd)
+            self.read_response()
+            self.close_connection()
             # it's necessary to query the switcher again here because of a quirk of this model...
             # I don't understand why but when switching between RGB and HDMI or when switching between
             # HDMI 1 and HDMI 2, the switcher does not emit a 'Z 0 30 ..' response, only a 'Y 0 30..'
+            # (I didn't notice this until extensive testing.)
             # This causes the input switch response not to be parsed above and _input_status never gets updated
-            return self.input_status
+            return self._input_status
+        # todo: rework this so that we don't have to call two methods to get at the juicy data
+        # update: working over serial, but not socket
 
     @property
     def power_status(self) -> bool:
-        self.transport.reset_input_buffer()
-        self.transport.write(b'Y 1 10\r')
-        self.read_response_serial()
+        self.open_connection()
+        self.comms.reset_input_buffer()
+        self.comms.send(b'Y 1 10\r')
+        self.read_response()
+        self.close_connection()
         return self._power_status
 
     @property
     def input_status(self) -> Input:
-        self.transport.reset_input_buffer()
-        self.transport.write(b'Y 1 30\r')
-        self.read_response_serial()
+        self.open_connection()
+        self.comms.reset_input_buffer()
+        self.comms.send(b'Y 1 30\r')
+        self.read_response()
+        self.close_connection()
         return self._input_status
 
     @property
     def av_mute(self) -> bool:
-        self.transport.reset_input_buffer()
-        self.transport.write(b'Y 1 8\r')
-        self.read_response_serial()
+        self.open_connection()
+        self.comms.reset_input_buffer()
+        self.comms.send(b'Y 1 8\r')
+        self.read_response()
+        self.close_connection()
         return self._av_mute
