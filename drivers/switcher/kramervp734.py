@@ -1,11 +1,26 @@
-import sys
+import logging
 import select
-from serial import Serial
-from socket import socket, create_connection, timeout
+from socket import socket, create_connection
+import sys
+from time import sleep
 
+from serial import Serial
 
 from drivers.switcher.switcher import SwitcherInterface
-RECVBUF = 1024
+RECVBUF = 2048
+
+logger = logging.getLogger('KramerVP734')
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+fh = logging.FileHandler('avc.log')
+fh.setLevel(logging.DEBUG)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
 
 
 class KramerVP734(SwitcherInterface):
@@ -324,7 +339,7 @@ class KramerVP734(SwitcherInterface):
         }
     }
 
-    def __init__(self, serial_device='/dev/ttyUSB1', serial_baud_rate=115200, serial_timeout=0.5, comm_method='serial',
+    def __init__(self, serial_device='/dev/ttyUSB0', serial_baud_rate=115200, serial_timeout=0.5, comm_method='serial',
                  tcp_ip=None, tcp_port=5000, tcp_timeout=2.0, sw=None):
         try:
             self.switcher = sw
@@ -334,14 +349,19 @@ class KramerVP734(SwitcherInterface):
             self._av_mute = None
 
             if comm_method == 'serial':
+                logger.debug('__init__(): Establishing RS-232 connection on device %s @ %d',
+                             serial_device, serial_baud_rate)
                 self.comms = self.Comms()
                 self.comms.serial_device = serial_device
                 self.comms.serial_baud_rate = serial_baud_rate
                 self.comms.serial_timeout = serial_timeout
                 self.comms.connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=serial_timeout)
+                logger.debug('__init__(): Connection established')
                 self.comms.connection.close()
+                logger.debug('__init__(): Connection closed')
 
             elif comm_method == 'tcp' and tcp_ip is not None:
+                logger.debug('__init__(): Establishing TCP connection to %s:%d', tcp_ip, tcp_port)
                 self.comms = self.Comms()
                 self.comms.tcp_ip = tcp_ip
                 self.comms.tcp_port = tcp_port
@@ -349,7 +369,9 @@ class KramerVP734(SwitcherInterface):
                 self.comms.connection = create_connection((tcp_ip, tcp_port),
                     timeout=tcp_timeout
                 )
+                logger.debug('__init__(): Connection established')
                 self.comms.connection.close()
+                logger.debug('__init__(): Connection closed')
 
         except Exception as inst:
             print(inst)
@@ -363,30 +385,27 @@ class KramerVP734(SwitcherInterface):
                 (self.comms.tcp_ip, self.comms.tcp_port),
                 timeout=self.comms.tcp_timeout
             )
+        logger.debug('Connection opened')
 
     def close_connection(self):
         self.comms.connection.close()
+        logger.debug('Connection closed')
 
     def read_response(self):
-        """Read responses starting with 'Z' and  ending with '\r\n>' and pass them to the parser.
-        This uses a blocking socket connection with a 2 second timeout
+        """Read all responses and pass the ones we're interested in to the parser.
         """
+        logger.debug('read_response() called')
         data = self.comms.recv()
 
-        # this prints a single b'Z .. .. ..\r\n>' statement returned from the switcher
-        print(data)
+        logger.debug('read_response() gets: %s', data)
 
-        # if we print data_parts here, we can see it is a list of two byte strings:
-        # [b'Z 0 8 0', b'']
         data_parts = data.split(b'\r\n>')
-        print(data_parts)
 
         # try to loop and get as much data as the switcher gives us
         if len(data_parts) > 0:
             index = 0
 
-            # used to be "while index < len(data_parts):"
-            while data:
+            while index < len(data_parts):
                 response = data_parts[index]
                 # print(response)
 
@@ -394,17 +413,7 @@ class KramerVP734(SwitcherInterface):
                 # we don't always get back a response beginning with 'Z 0 30'
                 # depending on which input we switched to/from
                 response_parts = response.split()
-                print(response_parts)
-
-                # wanna see magic?  delete the print statement.  that will cause the statement above it
-                # to fail to execute, causing the loop to be one iteration shorter.
-                # I don't understand... it's like Python just says 'eh, screw it' unless I wanna see what it returned?
-                data = self.comms.recv()
-                print(data)
-
-                # I also don't understand why this doesn't stop the loop.  not b'' is True
-                if not data:
-                    break
+                # print(response_parts)
 
                 index += 1
 
@@ -415,23 +424,15 @@ class KramerVP734(SwitcherInterface):
                 elif len(response_parts) > 3 and response_parts[2] == b'30':
                     self.parse(response.decode())
 
-    def read_response2(self):
-        data = self.comms.recv()
-        data2 = self.comms.recv()
-        data3 = self.comms.recv()
-        data4 = self.comms.recv()
-        data5 = self.comms.recv()
-        data6 = self.comms.recv()
-        # ...
-        print("1: {}\n2: {}\n3: {}\n4: {}\n5: {}\n6: {}".format(data, data2, data3, data4, data5, data6))
-
     def parse(self, data: str):
         """Parse a response and set internal state
         """
-        # quick way out - if response contains ':' it doesn't fit the pattern we're looking for
+        logger.debug('parse() called with data=%s', data)
+
+        # if response contains ':' it doesn't fit the pattern we're looking for
         # it's probably 'MAC:' or 'IP:' or some other message during bootup
         if ':' in data:
-            # log(data)
+            logger.debug('parse() says: %s', data)
             return
 
         # another special case where it rattles off the firmware version numbers during boot.
@@ -439,7 +440,7 @@ class KramerVP734(SwitcherInterface):
         # b'\r\nVTR1.21 \r\nVTX1.07 \r\nVPD1.10 \r\nVTO1.01 \r\nVTN1.00 \r\nVPC1.16\r\n\r\n>'
         # yeah, we're not interested in pretty much any of that but the main firmware is the first one
         elif 'VTR' in data:
-            # log("<FIRMWARE VERSION {}>".format(data.split()[0].strip()))
+            logger.debug('parse() says: <FIRMWARE VERSION %s>', data.split()[0].strip())
             return
 
         # now for the normal(ish) responses...
@@ -466,17 +467,18 @@ class KramerVP734(SwitcherInterface):
                 # special case for function 177 - auto switch input priority has 2 params
                 if len(data_parts) > 4 and func == 177:
                     param2 = int(data_parts[4])
-                    # log self.functions[func].format(
-                    #    self.data[func][3][param], self.data[func][4][param2]
-                    # )
+                    logger.debug('parse() says: %s', self.functions[func].format(
+                        self.data[func][3][param], self.data[func][4][param2]
+                    )
+                                 )
                     return
 
                 # if that param is defined for the function, return the formatted str
                 # with the defined value of the param
                 elif func in self.data and param in self.data[func]:
-                    # log(self.functions[func].format(self.data[func][param]))
-                    # this is where the magic should happen for tracking our state
+                    logger.debug('parse() says: %s', self.functions[func].format(self.data[func][param]))
 
+                    # this is where the magic should happen for tracking our state
                     # video mute set/get
                     if func == 8:
                         self._av_mute = bool(param)
@@ -487,18 +489,17 @@ class KramerVP734(SwitcherInterface):
                     # input set/get
                     elif func == 30:
                         self._input_status = self.Input(param)
-                        print("<input selected: {}".format(self.Input(param)))
 
                     return
                 # otherwise, just log the formatted str for the function with the
                 # bare value of the param inserted
                 else:
-                    # log(self.functions[func].format(param))
+                    logger.debug('parse says(): %s', self.functions[func].format(param))
                     return
 
             # response had no parameters, log just the function called
             else:
-                # log(self.functions[func])
+                logger.debug('parse() says: %s', self.functions[func])
                 return
 
         # response is just "-", this is a weird response that comes when you ask
@@ -506,71 +507,79 @@ class KramerVP734(SwitcherInterface):
         # receive 'Z 1 10 1\r\n' here but the VP-734 is quirky...
         elif len(data_parts) == 1 and data_parts[0] == "-":
             self._power_status = True
+            logger.debug('parse() says: Power query - power is ON')
             return
 
         # or data_parts[2] not listed in our defined functions,
         # must be something we didn't care enough to implement
         else:
-            # log("Unimplemented function: Response was {}".format(data))
+            logger.debug('parse() says: Unimplemented function', data)
             return
 
     def power_on(self) -> None:
+        logger.debug('power_on() called')
         self.open_connection()
-        self.comms.reset_input_buffer()
-        self.comms.send(b'Y 0 10 1\r')
+        cmd = b'Y 0 10 1\r'
+        logger.debug('sending: %s', cmd)
+        self.comms.send(cmd)
+        sleep(1.0)
         self.read_response()
         self.close_connection()
 
     def power_off(self) -> None:
+        logger.debug('power_off() called')
         self.open_connection()
-        self.comms.reset_input_buffer()
-        self.comms.send(b'Y 0 10 0\r')
+        cmd = b'Y 0 10 0\r'
+        logger.debug('sending: %s', cmd)
+        self.comms.send(cmd)
+        sleep(1.0)
         self.read_response()
         self.close_connection()
 
     def select_input(self, input_=Input.DIGITAL_1) -> Input:
+        logger.debug('select_input(%s) called', input_)
         if isinstance(input_, self.Input):
             self.open_connection()
-
-            # try taking this statement out!
-            self.comms.reset_input_buffer()
             cmd = b'Y 0 30 ' + bytes(str(input_.value), 'ascii') + b'\r'
-            # print(cmd)
+            logger.debug('sending: %s', cmd)
             self.comms.send(cmd)
+            sleep(1.0)
             self.read_response()
             self.close_connection()
-            # it's necessary to query the switcher again here because of a quirk of this model...
-            # I don't understand why but when switching between RGB and HDMI or when switching between
-            # HDMI 1 and HDMI 2, the switcher does not emit a 'Z 0 30 ..' response, only a 'Y 0 30..'
-            # (I didn't notice this until extensive testing.)
-            # This causes the input switch response not to be parsed above and _input_status never gets updated
             return self._input_status
-        # todo: rework this so that we don't have to call two methods to get at the juicy data
-        # update: working over serial, but not socket
 
     @property
     def power_status(self) -> bool:
+        logger.debug('power_status property called')
         self.open_connection()
-        self.comms.reset_input_buffer()
-        self.comms.send(b'Y 1 10\r')
+        cmd = b'Y 1 10\r'
+        logger.debug('sending: %s', cmd)
+        self.comms.send(cmd)
+        sleep(1.0)
         self.read_response()
         self.close_connection()
         return self._power_status
 
     @property
     def input_status(self) -> Input:
+        logger.debug('input_status property called')
         self.open_connection()
-        self.comms.reset_input_buffer()
-        self.comms.send(b'Y 1 30\r')
+        cmd = b'Y 1 30\r'
+        logger.debug('sending: %s', cmd)
+        self.comms.send(cmd)
+        sleep(1.0)
         self.read_response()
         self.close_connection()
         return self._input_status
 
     @property
     def av_mute(self) -> bool:
+        logger.debug('av_mute property called')
         self.open_connection()
-        self.comms.reset_input_buffer()
-        self.comms.send(b'Y 1 8\r')
+        cmd = b'Y 1 8\r'
+        logger.debug('sending: %s', cmd)
+        self.comms.send(cmd)
+        sleep(1.0)
         self.read_response()
         self.close_connection()
         return self._av_mute
