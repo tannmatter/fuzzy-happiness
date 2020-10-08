@@ -12,13 +12,15 @@ RECVBUF = 2048
 logger = logging.getLogger('KramerVP734')
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
+# set this to debug if i start misbehaving`
+ch.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 fh = logging.FileHandler('avc.log')
-fh.setLevel(logging.DEBUG)
+# set this to debug if i start misbehaving
+fh.setLevel(logging.INFO)
 fh.setFormatter(formatter)
 logger.addHandler(fh)
 
@@ -74,6 +76,7 @@ class KramerVP734(SwitcherInterface):
                     else:
                         junk = ins_available[0].recv(RECVBUF)
 
+    # all of this (functions, data) is for debugging, mostly
     functions = {
         0: "<MENU>", 1: "<UP>", 2: "<DOWN>", 3: "<LEFT>", 4: "<RIGHT>",
         5: "<ENTER>", 6: "<RESET {}>",
@@ -111,10 +114,7 @@ class KramerVP734(SwitcherInterface):
         # ...
         450: "<INPUT SIGNAL {}>", 451: "<OUTPUT RESOLUTION {}>"  # same as 80 for some reason
     }
-    bools = {
-        0: "OFF",
-        1: "ON"
-    }
+
     data = {
         6: {
             0: "720P",
@@ -401,19 +401,14 @@ class KramerVP734(SwitcherInterface):
 
         data_parts = data.split(b'\r\n>')
 
-        # try to loop and get as much data as the switcher gives us
         if len(data_parts) > 0:
             index = 0
 
             while index < len(data_parts):
                 response = data_parts[index]
-                # print(response)
 
-                # this is needed for the special case of switching inputs...
-                # we don't always get back a response beginning with 'Z 0 30'
-                # depending on which input we switched to/from
+                # only needed for special case below
                 response_parts = response.split()
-                # print(response_parts)
 
                 index += 1
 
@@ -421,6 +416,10 @@ class KramerVP734(SwitcherInterface):
                 if response.startswith(b'Z') or response == b'-':  # '-' == power query while powered on
                     self.parse(response.decode())
 
+                # special case for switching inputs:
+                # we don't always get back a response beginning with 'Z 0 30'
+                # depending on which input we switched to/from, but there should
+                # always be one starting with 'Y 0 30'
                 elif len(response_parts) > 3 and response_parts[2] == b'30':
                     self.parse(response.decode())
 
@@ -549,8 +548,12 @@ class KramerVP734(SwitcherInterface):
             self.close_connection()
             return self._input_status
 
-    @property
-    def power_status(self) -> bool:
+    # Each of these 'properties' gets evaluated (executed) by Pycharm every time you type
+    # the dot after 'some_switcher_object.interface'.  It's _really_ annoying and I've heard
+    # others say the same.  So any further testing on any class with properties (so, all of them)
+    # should ideally be done outside of Pycharm. For now, I'm just taking out the @property
+
+    def get_power_status(self) -> bool:
         logger.debug('power_status property called')
         self.open_connection()
         cmd = b'Y 1 10\r'
@@ -561,8 +564,11 @@ class KramerVP734(SwitcherInterface):
         self.close_connection()
         return self._power_status
 
-    @property
-    def input_status(self) -> Input:
+    # @property
+    def power_status(self) -> bool:
+        return self.get_power_status()
+
+    def get_input_status(self) -> Input:
         logger.debug('input_status property called')
         self.open_connection()
         cmd = b'Y 1 30\r'
@@ -573,8 +579,11 @@ class KramerVP734(SwitcherInterface):
         self.close_connection()
         return self._input_status
 
-    @property
-    def av_mute(self) -> bool:
+    # @property
+    def input_status(self) -> Input:
+        return self.get_input_status()
+
+    def get_av_mute(self) -> bool:
         logger.debug('av_mute property called')
         self.open_connection()
         cmd = b'Y 1 8\r'
@@ -584,3 +593,7 @@ class KramerVP734(SwitcherInterface):
         self.read_response()
         self.close_connection()
         return self._av_mute
+
+    # @property
+    def av_mute(self) -> bool:
+        return self.get_av_mute()
