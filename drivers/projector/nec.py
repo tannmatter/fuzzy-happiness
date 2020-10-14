@@ -3,7 +3,7 @@ from socket import socket, create_connection
 
 from serial import Serial
 
-from utils.byteops import Byte, checksum
+from utils.byteops import Byte
 from drivers.projector.projector import ProjectorInterface
 
 RECVBUF = 512
@@ -327,6 +327,14 @@ class NEC(ProjectorInterface):
             else:
                 raise Exception('The only valid values of comm_method are "tcp" and "serial"')
 
+    @staticmethod
+    def __checksum(self, vals):
+        """Calculate a one-byte checksum of all values"""
+        if isinstance(vals, bytes) or isinstance(vals, list):
+            return sum(i for i in vals) & 0xFF
+        elif isinstance(vals, int):
+            return vals & 0xFF
+
     def __del__(self):
         """Destructor.  Ensure that if a serial or socket interface was opened,
         it is closed whenever we destroy this object
@@ -360,7 +368,7 @@ class NEC(ProjectorInterface):
             for p in params:
                 cmd_str += p.value
             if checksum_required:
-                cmd_str += bytes([checksum(cmd_str)])
+                cmd_str += bytes([self.__checksum(cmd_str)])
 
         try:
             if self.comms is not None:
