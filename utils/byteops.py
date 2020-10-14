@@ -61,14 +61,6 @@ class Byte(int):
         return hex(self & 0x0F)[2:]
 
 
-def checksum(vals):
-    """Calculate a one-byte checksum of all values"""
-    if isinstance(vals, bytes) or isinstance(vals, list):
-        return sum(i for i in vals) & 0xFF
-    elif isinstance(vals, int):
-        return vals & 0xFF
-
-
 def print_bytes(vals):
     """A simple function for printing each byte of a data structure as "\\x...",
        even ASCII printable characters.

@@ -44,7 +44,7 @@ class SwitcherInterface(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def select_input(self) -> Input:
+    def select_input(self, input_: Input) -> Input:
         raise NotImplementedError
 
     @property
