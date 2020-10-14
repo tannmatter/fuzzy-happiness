@@ -110,10 +110,10 @@ class SamsungExLink(TVInterface):
         total = sum(_bytes)
         diff = two_fifty_six - total
         if diff >= 0:
-            logger.debug('checksum: %s', bytes([diff]))
+            logger.debug('checksum: %x', diff)
             return bytes([diff])
         else:
-            logger.debug('checksum: %s', bytes([two_fifty_six - abs(diff)]))
+            logger.debug('checksum: %x', two_fifty_six - abs(diff))
             return bytes([two_fifty_six - abs(diff)])
 
     def __cmd(self, cmd: Command, param: bytes = None):
