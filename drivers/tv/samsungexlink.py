@@ -131,7 +131,7 @@ class SamsungExLink(TVInterface):
                 # Samsung is not very forthcoming about ExLink so we don't know how to parse any of this junk data
                 # let's log it anyway
                 res = self.comms.recv(RECVBUF)
-                logger.debug('__cmd(): result - %s', res.decode('ascii'))
+                logger.debug('__cmd(): result - %s', str(res))
             except Exception as inst:
                 print(inst)
                 sys.exit(1)
