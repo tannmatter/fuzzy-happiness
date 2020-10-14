@@ -54,6 +54,7 @@ class SamsungExLink(TVInterface):
         KEY_VOL_UP = b'\x08\x22\x01\x00\x01\x00'
         KEY_VOL_DN = b'\x08\x22\x01\x00\x02\x00'
         KEY_MUTE = b'\x08\x22\x02\x00\x00\x00'
+        KEY_MENU = b'\x08\x22\x0d\x00\x00\x1a'
         KEY_ENTER = b'\x08\x22\x0d\x00\x00\x68'
         KEY_RETURN = b'\x08\x22\x0d\x00\x00\x58'
         KEY_EXIT = b'\x08\x22\x0d\x00\x00\x2d'
@@ -175,6 +176,9 @@ class SamsungExLink(TVInterface):
 
     def volume_dn(self):
         self.__cmd(self.Command.KEY_VOL_DN)
+
+    def key_menu(self):
+        self.__cmd(self.Command.KEY_MENU)
 
     def key_return(self):
         self.__cmd(self.Command.KEY_RETURN)
