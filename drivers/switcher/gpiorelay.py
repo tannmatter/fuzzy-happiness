@@ -31,8 +31,8 @@ class GPIORelay:
         GPIO.setmode(GPIO.BCM)
         # ensure that all pins we use are set to OUT and all relays on the board DEACTIVATED.
         for i in self.pins:
-            GPIO.output(i, self.R_OFF)
             GPIO.setup(i, GPIO.OUT)
+            GPIO.output(i, self.R_OFF)
 
         # sanity check
         self.num_inputs = num_inputs
