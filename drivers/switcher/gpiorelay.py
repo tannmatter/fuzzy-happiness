@@ -29,9 +29,6 @@ import time
 
 
 class GPIORelay:
-    # in order, the BCM mode GPIO pin numbers we are using for our inputs (supports up to 4 inputs)
-    pins = [2, 3, 4, 5]
-
     # the duration of 'pressing' the contacts together.  About .3 seconds seems to work well on our Kramers.
     press_duration = 0.3
 
@@ -52,17 +49,17 @@ class GPIORelay:
             self.R_OFF = GPIO.LOW
 
         GPIO.setmode(GPIO.BCM)
-        # ensure that all pins we use are set to OUT and all relays on the board DEACTIVATED.
-        for i in self.pins:
-            GPIO.setup(i, GPIO.OUT)
-            GPIO.output(i, self.R_OFF)
-
-        # sanity check
-        self.num_inputs = num_inputs
 
         # allow for modifying our default pins when necessary
         if inputs is not None and isinstance(inputs, dict):
             self.inputs = inputs
+
+        # ensure that all pins we use are set to OUT and all relays on the board DEACTIVATED.
+        for k, v in self.inputs.items():
+            GPIO.setup(v, GPIO.OUT)
+            GPIO.output(v, self.R_OFF)
+
+        self.num_inputs = num_inputs
 
     def select_input(self, input_):
         if input_ not in self.inputs or input_ > self.num_inputs:
@@ -73,8 +70,8 @@ class GPIORelay:
                 time.sleep(self.press_duration)
                 GPIO.output(self.inputs[input_], self.R_OFF)
 
-            except Exception as inst:
-                print(inst)
+            except Exception as e:
+                print(e)
                 sys.exit(1)
 
     def __del__(self):
