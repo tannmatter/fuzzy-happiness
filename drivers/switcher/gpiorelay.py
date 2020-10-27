@@ -43,6 +43,7 @@ class GPIORelay(SwitcherInterface):
             self.R_OFF = GPIO.LOW
 
         GPIO.setmode(GPIO.BCM)
+        logger.debug('__init__(): GPIO.setmode(GPIO.BCM)')
 
         # allow for modifying our default pins when necessary
         if inputs is not None and isinstance(inputs, dict):
