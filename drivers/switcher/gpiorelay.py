@@ -102,4 +102,7 @@ class GPIORelay(SwitcherInterface):
     def __del__(self):
         # when closing up shop, run GPIO.cleanup.
         logger.debug('Cleaning up GPIO state for shutdown...')
+        # it would perhaps be best to move this into an outer scope to execute it only at system shutdown and not
+        # object deletion/reassignment?  This causes GPIO.cleanup() to execute immediately after reassigning a
+        # GPIORelay variable to another GPIORelay instance
         GPIO.cleanup()
