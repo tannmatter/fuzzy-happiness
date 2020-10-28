@@ -6,7 +6,7 @@ from time import sleep
 
 from serial import Serial
 
-from drivers.switcher.switcher import SwitcherInterface
+from drivers.switcher import SwitcherInterface
 RECVBUF = 2048
 
 logger = logging.getLogger('KramerVP734')

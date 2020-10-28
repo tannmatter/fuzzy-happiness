@@ -3,7 +3,7 @@ import sys
 
 from serial import Serial
 
-from drivers.tv.tv import TVInterface
+from drivers.tv import TVInterface
 RECVBUF = 2048
 
 logger = logging.getLogger('SamsungExLink')

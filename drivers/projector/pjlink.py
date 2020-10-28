@@ -1,7 +1,7 @@
 from enum import Enum
 from socket import socket, create_connection
 
-from drivers.projector.projector import ProjectorInterface
+from drivers.projector import ProjectorInterface
 
 RECVBUF = 512
 

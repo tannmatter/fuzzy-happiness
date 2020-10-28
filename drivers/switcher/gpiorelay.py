@@ -3,7 +3,7 @@ import logging
 import sys
 import time
 
-from drivers.switcher.switcher import SwitcherInterface
+from drivers.switcher import SwitcherInterface
 
 logger = logging.getLogger('GPIORelay')
 logger.setLevel(logging.DEBUG)
@@ -34,7 +34,7 @@ class GPIORelay(SwitcherInterface):
         4: 5
     }
 
-    def __init__(self, low_active=True, num_inputs=2, inputs=None, default_input=None):
+    def __init__(self, low_active=True, num_inputs=2, inputs=None, default_input=None, sw=None):
         if low_active:
             self.R_ON = GPIO.LOW
             self.R_OFF = GPIO.HIGH
@@ -58,6 +58,7 @@ class GPIORelay(SwitcherInterface):
         self._selected_input = None
         if default_input:
             self.select_input(default_input)
+        self.switcher = sw
 
     def select_input(self, input_):
         if input_ not in self.inputs or input_ > self.num_inputs:

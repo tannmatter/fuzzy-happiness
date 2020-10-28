@@ -4,7 +4,7 @@ from socket import socket, create_connection
 from serial import Serial
 
 from utils.byteops import Byte
-from drivers.projector.projector import ProjectorInterface
+from drivers.projector import ProjectorInterface
 
 RECVBUF = 512
 

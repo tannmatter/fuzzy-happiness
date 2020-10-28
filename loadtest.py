@@ -5,7 +5,7 @@ import importlib
 import json
 import sys
 
-from drivers.projector.projector import Projector
+from drivers.projector import Projector
 
 
 if __name__ == "__main__":
