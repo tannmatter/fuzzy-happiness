@@ -164,14 +164,16 @@ class KramerP3000(SwitcherInterface):
                 self.inputs = inputs
 
             # is this a matrix switcher?  we should be able to tell by the length of the input status
-                self.outputs = len(self.input_status)
+            input_status = self.input_status
+            self.outputs = len(input_status)
+            print(input_status)
 
         except Exception as inst:
             print(inst)
             sys.exit(1)
 
         else:
-            self.comms.connection.close()
+            # self.comms.connection.close()
             logger.debug('__init__(): Connection closed')
 
     def open_connection(self):
@@ -261,17 +263,17 @@ class KramerP3000(SwitcherInterface):
         # This is a query supported by most newer devices, but not supported by our VS-211UHD.
         # '1' means video layer, '*' means all destinations (outputs).  Should return a list of
         # all routing assignments.
-        self.comms.send(b'#ROUTE? 1,*')
+        self.comms.send(b'#ROUTE? 1,*\r')
         response = self.comms.recv(RECVBUF)
         if re.search(rb'ERR\s*002', response):
             # 'command not supported'.  This is probably not a matrix switcher, but let's check and see.
             # Try the legacy '#VID? *'
-            self.comms.send(b'#VID? *')
+            self.comms.send(b'#VID? *\r')
             response = self.comms.recv(RECVBUF)
             if re.search(rb'ERR\s*002', response):
                 # If it doesn't support this, it might be because of the '*' indicating all outputs.
                 # Try just querying what output 1 is set to.
-                self.comms.send(b'#VID? 1')
+                self.comms.send(b'#VID? 1\r')
                 response = self.comms.recv(RECVBUF)
                 if re.search(rb'ERR\s002', response):
                     # now we're stumped.  let's bail.
@@ -282,7 +284,7 @@ class KramerP3000(SwitcherInterface):
                     # output should look like this: b'~01@VID 1>1\r\n'
                     #                                         ^that's the number we're looking for
                     logger.debug('input_status(): {}'.format(response[8]))
-                    return [int(response[8])]
+                    return [int(chr(response[8]))]
             else:
                 # output should look like this:
                 # b'~01@VID 1>1,1>2\r\n' - commas separating each assignment.
@@ -291,7 +293,7 @@ class KramerP3000(SwitcherInterface):
                 inputs = []
                 byte = 8
                 while byte < len(response):
-                    inputs.append(response[byte])
+                    inputs.append(int(chr(response[byte])))
                     byte += 4
                 logger.debug('input_status(): {}'.format(inputs))
                 return inputs
@@ -305,7 +307,7 @@ class KramerP3000(SwitcherInterface):
             # as it ends in \r\n, the last member of routes will be the empty byte string b''
             for route in routes:
                 if route != b'':
-                    inputs.append(route[14])
+                    inputs.append(int(chr(route[14])))
             logger.debug('input_status(): {}'.format(inputs))
             return inputs
 
