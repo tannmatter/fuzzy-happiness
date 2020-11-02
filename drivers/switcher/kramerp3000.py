@@ -161,20 +161,20 @@ class KramerP3000(SwitcherInterface):
                 self.comms.connection = create_connection((ip_address, ip_port), timeout=ip_timeout)
                 logger.debug('__init__(): Connection established')
 
-            # get number of inputs.  not all switchers support a way to query this so it's better if we pass it in
-            self.inputs = inputs
-
-            # is this a matrix switcher?  we should be able to tell by the length of the input status response
-            input_status = self.input_status
-            self.outputs = len(input_status)
-
         except Exception as inst:
             print(inst)
             sys.exit(1)
 
-        finally:
+        else:
             self.comms.connection.close()
             logger.debug('__init__(): Connection closed')
+
+        # get number of inputs.  not all switchers support a way to query this so it's better if we pass it in
+        self.inputs = inputs
+
+        # is this a matrix switcher?  we should be able to tell by the length of the input status response
+        input_status = self.input_status
+        self.outputs = len(input_status)
 
     def open_connection(self):
         if isinstance(self.comms.connection, Serial):
