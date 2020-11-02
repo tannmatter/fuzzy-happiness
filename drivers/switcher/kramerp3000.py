@@ -78,6 +78,10 @@ logger.addHandler(fh)
 
 
 class KramerP3000(SwitcherInterface):
+    """This is a _very_ basic Kramer Protocol 3000 driver that works for some basic switchers.
+    I know it works for our VS-211UHD and VS-42UHD. It allows for input switching and querying and
+    that's pretty much it.  Uses the #ROUTE and #VID commands.
+    """
     class Error:
         """Error regexes.  Varying by device, error codes may or may not contain one or more spaces
         between 'ERR' and the code number."""
@@ -205,21 +209,21 @@ class KramerP3000(SwitcherInterface):
             self.comms.send(cmd.encode())
             response = self.comms.recv()
             if re.search(self.Error.PARAM_OUT_OF_RANGE, response):
-                raise ValueError('Input or output number out of range')
+                raise ValueError('Input or output number out of range', input_, output)
             elif re.search(self.Error.CMD_UNAVAILABLE, response):
                 # try #VID instead
                 cmd = '#VID {}>{}\r'.format(input_, output)
                 self.comms.send(cmd.encode())
                 response = self.comms.recv()
                 if re.search(self.Error.PARAM_OUT_OF_RANGE, response):
-                    raise ValueError('Input or output number out of range')
+                    raise ValueError('Input or output number out of range', input_, output)
                 if re.search(self.Error.CMD_UNAVAILABLE, response):
                     # hmmm.... how about #AV?
                     cmd = '#AV {}>{}\r'.format(input_, output)
                     self.comms.send(cmd.encode())
                     response = self.comms.recv()
                     if re.search(self.Error.PARAM_OUT_OF_RANGE, response):
-                        raise ValueError('Input or output number out of range')
+                        raise ValueError('Input or output number out of range', input_, output)
 
             if b'ERR' not in response:
                 return input_
@@ -236,9 +240,9 @@ class KramerP3000(SwitcherInterface):
 
     @property
     def input_status(self):
-        """"This tries to detect what our input>output routing assignment(s) is(are) using various commands,
-        some newer, some legacy.  Returns a list of integer input assignments. If the switcher only has a single output,
-        the list will contain a single integer.
+        """"This tries to detect what our input>output routing assignment(s) is(are) using a few different commands.
+        Returns a list of integer input assignments. If the switcher only has a single output, the list will contain
+        a single integer.
         """
         self.open_connection()
 
@@ -323,5 +327,6 @@ class KramerP3000(SwitcherInterface):
 
     @property
     def av_mute(self):
+        # todo: maybe think about implementing this (or don't). it's queried per output so that's a pain of course
         logger.warning('av_mute: Not implemented at this time')
         return False
