@@ -59,7 +59,7 @@ from time import sleep
 from serial import Serial
 
 from drivers.switcher import SwitcherInterface
-RECVBUF = 2048
+BUFF_SIZE = 2048
 
 logger = logging.getLogger('KramerP3000')
 logger.setLevel(logging.DEBUG)
@@ -78,10 +78,12 @@ logger.addHandler(fh)
 
 
 class KramerP3000(SwitcherInterface):
-    class Input(SwitcherInterface.Input):
-        """Default set of inputs, represents a barebones 2 x 1 HDMI switcher"""
-        HDMI_1 = 1
-        HDMI_2 = 2
+    class Error:
+        """Error regexes.  Varying by device, error codes may or may not contain one or more spaces
+        between 'ERR' and the code number."""
+        SYNTAX = rb'ERR\s*001'
+        CMD_UNAVAILABLE = rb'ERR\s*002'
+        PARAM_OUT_OF_RANGE = rb'ERR\s*003'
 
     class Comms(SwitcherInterface.Comms):
         def __init__(self):
@@ -99,7 +101,7 @@ class KramerP3000(SwitcherInterface):
             elif isinstance(self.connection, socket):
                 return self.connection.send(data)
 
-        def recv(self, size=RECVBUF):
+        def recv(self, size=BUFF_SIZE):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
             elif isinstance(self.connection, socket):
@@ -122,10 +124,10 @@ class KramerP3000(SwitcherInterface):
                     if len(ins_available) == 0:
                         break
                     else:
-                        junk = ins_available[0].recv(RECVBUF)
+                        junk = ins_available[0].recv(BUFF_SIZE)
 
     def __init__(self, device='/dev/ttyUSB0', *, comm_method='serial', baudrate=9600, timeout=0.5,
-                 ip_address=None, ip_port=5000, ip_timeout=2.0, sw=None, inputs=None):
+                 ip_address=None, ip_port=5000, ip_timeout=2.0, sw=None, inputs: int = 2):
         """Constructor
 
         The default means of communication is RS-232 serial as it seems the most reliable from my experiments.
@@ -159,21 +161,19 @@ class KramerP3000(SwitcherInterface):
                 self.comms.connection = create_connection((ip_address, ip_port), timeout=ip_timeout)
                 logger.debug('__init__(): Connection established')
 
-            # support a custom dict of inputs
-            if inputs and isinstance(inputs, dict):
-                self.inputs = inputs
+            # get number of inputs.  not all switchers support a way to query this so it's better if we pass it in
+            self.inputs = inputs
 
-            # is this a matrix switcher?  we should be able to tell by the length of the input status
+            # is this a matrix switcher?  we should be able to tell by the length of the input status response
             input_status = self.input_status
             self.outputs = len(input_status)
-            print(input_status)
 
         except Exception as inst:
             print(inst)
             sys.exit(1)
 
-        else:
-            # self.comms.connection.close()
+        finally:
+            self.comms.connection.close()
             logger.debug('__init__(): Connection closed')
 
     def open_connection(self):
@@ -190,127 +190,138 @@ class KramerP3000(SwitcherInterface):
         self.comms.connection.close()
         logger.debug('Connection closed')
 
-    def detect_outputs(self):
-        """Attempts to discover how many outputs this switcher has in case the configuration did not provide it."""
-        # Try to query the current video routing assignments
-        # '1' means video layer, and '*' means all destinations (outputs)
-        # Our VS-42 matrix supports this command, but the VS-211 single output returns a 'command not supported' error.
-        self.comms.send(b'#ROUTE? 1,*\r')
-        response = self.comms.recv(RECVBUF)
-
-        if re.search(rb'ERR\s*002', response):
-            # That's a 'command not supported' error for '#ROUTE?', so it doesn't look like this is a matrix switcher...
-            # Note: We could just return 1 here and be reasonably sure that it has only 1 output,
-            # ...but let's be really sure... Try to route inputs to outputs with the "#VID" command instead
-            # until we get a "parameter out of range" error.  VS-211 doesn't support '#ROUTE' but does support '#VID'.
-            # If '#ROUTE' is unsupported, then '#VID' or '#AV' should be...
-
-            # Start at output 1... "#VID 1>1" means "send video input 1 to output 1"
-            # We'll keep increasing the output_number until '#VID IN>OUT' fails.
-            # Note: This also has the SIDE EFFECT of always resetting the switcher's input to 1!
-            # If you decide this is a bad idea (or more like your angry faculty decide for you),
-            # then this while loop will need to get lost and we'll just return 1 here instead...
-            # (Or make sure you specify # of outputs in the room config)
-            # I actually think this may be a boon because we often have faculty switch the input over to laptop
-            # without bothering to switch it back to desktop for the next instructor and we get tech support
-            # calls about this all the freaking time!  If the system shuts down every night, and every
-            # morning it goes back to input 1, this could be good.
-            output_number = 1
-            outputs_found = 0
-
-            while True:
-                self.comms.send(b'#VID 1>' + bytes(str(output_number), 'ascii') + b'\r')
-                response = self.comms.recv(RECVBUF)
-                # 'parameter out of range' error
-                if re.search(rb'ERR\s*003', response):
-                    break
-                else:
-                    output_number += 1
-                    outputs_found += 1
-            return outputs_found
-        else:
-            # If '#ROUTE? 1,*' was successful, it returns all routing assignments in the following format:
-            # '~01@ROUTE 1,<dest>,<src>\r\n' - one for each destination (output).
-            # Each begins with '~01@' (the default device number) and ends with '\r\n'...
-
-            # ...so just split on '\r\n'
-            routes = response.split(b'\r\n')
-
-            # If there are 2 outputs, len(routes) will be 3 - the last substring will always be empty.
-            return len(routes) - 1
-
     def power_on(self):
-        """Unsupported as far as I can tell"""
+        logger.debug('power_on(): Unsupported')
         return None
 
     def power_off(self):
-        """Unsupported as far as I can tell"""
+        logger.debug('power_off(): Unsupported')
         return None
 
-    def select_input(self, input_: Input = Input.HDMI_1) -> Input:
-        pass
+    def select_input(self, input_=1, output=1):
+        try:
+            self.open_connection()
+            cmd = '#ROUTE 1,{},{}\r'.format(output, input_)
+            self.comms.send(cmd.encode())
+            response = self.comms.recv()
+            if re.search(self.Error.PARAM_OUT_OF_RANGE, response):
+                raise ValueError('Input or output number out of range')
+            elif re.search(self.Error.CMD_UNAVAILABLE, response):
+                # try #VID instead
+                cmd = '#VID {}>{}\r'.format(input_, output)
+                self.comms.send(cmd.encode())
+                response = self.comms.recv()
+                if re.search(self.Error.PARAM_OUT_OF_RANGE, response):
+                    raise ValueError('Input or output number out of range')
+                if re.search(self.Error.CMD_UNAVAILABLE, response):
+                    # hmmm.... how about #AV?
+                    cmd = '#AV {}>{}\r'.format(input_, output)
+                    self.comms.send(cmd.encode())
+                    response = self.comms.recv()
+                    if re.search(self.Error.PARAM_OUT_OF_RANGE, response):
+                        raise ValueError('Input or output number out of range')
+
+            if b'ERR' not in response:
+                return input_
+
+        except Exception:
+            logger.error('select_input(): Exception occurred: ', exc_info=True)
+        finally:
+            self.close_connection()
 
     @property
     def power_status(self):
+        logger.debug('power_status: Unsupported')
         return None
 
     @property
     def input_status(self):
         """"This tries to detect what our input>output routing assignment(s) is(are) using various commands,
         some newer, some legacy.  Returns a list of integer input assignments. If the switcher only has a single output,
-        the list will be a single integer.
+        the list will contain a single integer.
         """
-        # This is a query supported by most newer devices, but not supported by our VS-211UHD.
-        # '1' means video layer, '*' means all destinations (outputs).  Should return a list of
-        # all routing assignments.
-        self.comms.send(b'#ROUTE? 1,*\r')
-        response = self.comms.recv(RECVBUF)
-        if re.search(rb'ERR\s*002', response):
-            # 'command not supported'.  This is probably not a matrix switcher, but let's check and see.
-            # Try the legacy '#VID? *'
-            self.comms.send(b'#VID? *\r')
-            response = self.comms.recv(RECVBUF)
-            if re.search(rb'ERR\s*002', response):
-                # If it doesn't support this, it might be because of the '*' indicating all outputs.
-                # Try just querying what output 1 is set to.
-                self.comms.send(b'#VID? 1\r')
-                response = self.comms.recv(RECVBUF)
-                if re.search(rb'ERR\s002', response):
-                    # now we're stumped.  let's bail.
-                    logger.debug('input_status(): anomalous reponse: {}'.format(response.decode()))
-                    return None
+        self.open_connection()
+
+        try:
+            # This is done first to ensure the read buffer is empty before executing our queries.
+            # Anything left in the buffer will prevent us from correctly parsing our query reponses.
+            self.comms.reset_input_buffer()
+
+            # '1' means video layer, '*' means all destinations (outputs).  Should return a list of
+            # all video routing assignments.
+            self.comms.send(b'#ROUTE? 1,*\r')
+            response = self.comms.recv()
+            logger.debug('input_status: {}'.format(response.decode()))
+
+            if re.search(self.Error.CMD_UNAVAILABLE, response):
+                # Try the legacy '#VID? *'
+                self.comms.send(b'#VID? *\r')
+                response = self.comms.recv()
+                logger.debug('input_status: {}'.format(response.decode()))
+
+                if re.search(self.Error.CMD_UNAVAILABLE, response):
+                    # If it doesn't support this, it might be because of the '*' indicating all outputs?
+                    # Try just querying what output 1 is set to.
+                    self.comms.send(b'#VID? 1\r')
+                    response = self.comms.recv()
+                    logger.debug('input_status: {}'.format(response.decode()))
+
+                    if re.search(self.Error.CMD_UNAVAILABLE, response):
+                        # also unsupported?  let's bail.
+                        logger.debug('input_status: could not reliably determine input status')
+                        return None
+                    else:
+                        # must be a very picky single output switcher
+                        # output should look like this: b'~01@VID 1>1\r\n'
+                        #                                         ^that's the number we're looking for
+                        match = re.search(rb'~\d+@VID\s+(\d+)>\d+', response)
+                        if match:
+                            return [int(match.group(1))]
+
                 else:
-                    # must be a very picky single output switch
-                    # output should look like this: b'~01@VID 1>1\r\n'
-                    #                                         ^that's the number we're looking for
-                    logger.debug('input_status(): {}'.format(response[8]))
-                    return [int(chr(response[8]))]
+                    # output should look like this:
+                    # b'~01@VID #>#,#>#,...\r\n' - with commas separating each route assignment.
+                    #           ^   ^we want the first numbers in each set
+                    match = re.search(rb'~\d+@VID\s+([0-9>,]+)\r\n', response)
+                    if match:
+                        # If we matched, match.group(1) contains all our routing info (#>#,#>#,...)
+                        routing_info = match.group(1)
+
+                        # Split by commas if present
+                        routes = re.split(rb',', routing_info)
+                        # routes will be a list of byte strings that all look like b'#>#'
+                        # (If there are no commas, split returns a list with the single b'#>#')
+                        inputs = []
+                        for route in routes:
+                            # We want the first number
+                            m = re.search(rb'(\d+)>\d+', route)
+                            if m:
+                                inputs.append(int(m.group(1)))
+                        return inputs
+
             else:
-                # output should look like this:
-                # b'~01@VID 1>1,1>2\r\n' - commas separating each assignment.
-                #           ^   ^we want these and every 4th byte after, not counting \r or \n
-                response = response.rstrip(b'\r\n')
+                # If '#ROUTE? 1,*' worked, the result should look like this (according to the VS-42 output):
+                # b'~01@ROUTE 1,1,1\r\n~01@ROUTE 1,2,1\r\n'
+                #                 ^14                ^The third number in each is the input
+                # first let's split by \r\n
+                routes = response.split(b'\r\n')
                 inputs = []
-                byte = 8
-                while byte < len(response):
-                    inputs.append(int(chr(response[byte])))
-                    byte += 4
+                # as the response ends in b'\r\n', the last member of routes will be the empty byte string b''
+                for route in routes:
+                    match = re.search(rb'~\d+@ROUTE\s+\d+,\d+,(\d+)', route)
+                    if match:
+                        inputs.append(int(match.group(1)))
                 logger.debug('input_status(): {}'.format(inputs))
                 return inputs
-        else:
-            # If '#ROUTE? 1,*' worked, the result should look like this (according to the VS-42 output):
-            # b'~01@ROUTE 1,1,1\r\n~01@ROUTE 1,2,1\r\n'
-            #                 ^14                ^The third number in each is the input
-            # first let's split by \r\n
-            routes = response.split(b'\r\n')
-            inputs = []
-            # as it ends in \r\n, the last member of routes will be the empty byte string b''
-            for route in routes:
-                if route != b'':
-                    inputs.append(int(chr(route[14])))
-            logger.debug('input_status(): {}'.format(inputs))
-            return inputs
+
+        except Exception:
+            logger.error('input_status: Exception occurred: ', exc_info=True)
+            return None
+
+        finally:
+            self.close_connection()
 
     @property
     def av_mute(self):
+        logger.warning('av_mute: Not implemented at this time')
         return False
