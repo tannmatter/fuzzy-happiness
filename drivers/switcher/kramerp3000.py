@@ -106,7 +106,7 @@ class KramerP3000(SwitcherInterface):
             elif isinstance(self.connection, socket):
                 return self.connection.send(data)
 
-        def recv(self, size=BUFF_SIZE):
+        def recv(self, size=BUFF_SIZE, delay=0.3):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
             elif isinstance(self.connection, socket):
@@ -127,7 +127,7 @@ class KramerP3000(SwitcherInterface):
                     while data_available:
                         try:
                             buffer += self.connection.recv(BUFF_SIZE)
-                            sleep(0.05)
+                            sleep(delay)
                         except BlockingIOError as e:
                             # break the loop
                             data_available = False
