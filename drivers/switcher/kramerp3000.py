@@ -220,8 +220,10 @@ class KramerP3000(SwitcherInterface):
 
         self.comms.send(cmd)
         response = self.comms.recv()
+        # If '\r\n' appears in the middle of a response (as does with multi-output switchers), the middle '\r\n' is
+        # replaced with a pipe for cleaner logging.  The trailing '\r\n' is first rstripped.
         logger.debug('_try_cmd:: cmd: "{}", response: "{}"'.
-                     format(cmd.decode().rstrip(), response.decode().replace('\r\n', ' | ')))
+                     format(cmd.decode().rstrip(), response.decode().rstrip().replace('\r\n', ' | ')))
 
         # Return which error, if any, was received, or True and the response itself otherwise
         # (These are not the only errors possible, just the only ones we're going to worry about here)
