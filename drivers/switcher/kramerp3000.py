@@ -220,7 +220,8 @@ class KramerP3000(SwitcherInterface):
 
         self.comms.send(cmd)
         response = self.comms.recv()
-        logger.debug('_try_cmd:: cmd: "{}", response: "{}"'.format(cmd.decode().rstrip(), response.decode().rstrip()))
+        logger.debug('_try_cmd:: cmd: "{}", response: "{}"'.
+                     format(cmd.decode().rstrip(), response.decode().replace('\r\n', ' | ')))
 
         # Return which error, if any, was received, or True and the response itself otherwise
         # (These are not the only errors possible, just the only ones we're going to worry about here)
