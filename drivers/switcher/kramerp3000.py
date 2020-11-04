@@ -110,26 +110,51 @@ class KramerP3000(SwitcherInterface):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
             elif isinstance(self.connection, socket):
-                return self.connection.recv(size)
+                # to switch back to blocking socket: uncomment this
+                # return self.connection.recv(size)
+
+                in_socks = [self.connection]
+
+                # we only care if input is available for this socket
+                # select called here without a timeout, so recv() blocks until there is input available
+                inputs_available, _, _ = select.select(
+                    in_socks, [], []
+                )
+                buffer = b''
+                # there is data available to read
+                if self.connection in inputs_available:
+                    data_available = True
+                    while data_available:
+                        try:
+                            buffer += self.connection.recv(BUFF_SIZE)
+                            sleep(0.05)
+                        except BlockingIOError as e:
+                            # break the loop
+                            data_available = False
+                return buffer
 
         def reset_input_buffer(self):
             if isinstance(self.connection, Serial):
                 self.connection.reset_input_buffer()
             elif isinstance(self.connection, socket):
-
                 in_socks = [self.connection]
-                out_socks, err_socks = [], []
-                while True:
-                    ins_available, outs_available, errs_available = select.select(
-                        in_socks,
-                        out_socks,
-                        err_socks,
-                        self.ip_timeout
-                    )
-                    if len(ins_available) == 0:
-                        break
-                    else:
-                        junk = ins_available[0].recv(BUFF_SIZE)
+
+                # we only care if input is available for this socket
+                # select called here with timeout of 0, so it polls instead of blocking!
+                ins_available, _, _ = select.select(
+                    in_socks, [], [], 0
+                )
+                junk_buffer = b''
+                # there is data available to read (junk it)
+                if self.connection in ins_available:
+                    data_available = True
+                    while data_available:
+                        try:
+                            junk_buffer += self.connection.recv(BUFF_SIZE)
+                            sleep(0.05)
+                            logger.debug('junk_buffer: {}'.format(junk_buffer.decode()))
+                        except BlockingIOError as e:
+                            data_available = False
 
     def __init__(self, device='/dev/ttyUSB0', *, comm_method='serial', baudrate=9600, timeout=0.25,
                  ip_address=None, ip_port=5000, ip_timeout=2.0, sw=None, inputs: int = 2):
@@ -163,7 +188,8 @@ class KramerP3000(SwitcherInterface):
                 self.comms.ip_address = ip_address
                 self.comms.ip_port = ip_port
                 self.comms.ip_timeout = ip_timeout
-                self.comms.connection = create_connection((ip_address, ip_port), timeout=ip_timeout)
+                self.comms.connection = create_connection((ip_address, ip_port), timeout=None)
+                self.comms.connection.setblocking(False)
                 logger.debug('__init__(): Connection established')
 
         except Exception as inst:
@@ -186,9 +212,9 @@ class KramerP3000(SwitcherInterface):
             self.comms.connection.open()
         elif isinstance(self.comms.connection, socket):
             self.comms.connection = create_connection(
-                (self.comms.ip_address, self.comms.ip_port),
-                timeout=self.comms.ip_timeout
+                (self.comms.ip_address, self.comms.ip_port), timeout=None
             )
+            self.comms.connection.setblocking(False)
         logger.debug('Connection opened')
 
     def close_connection(self):
@@ -220,6 +246,7 @@ class KramerP3000(SwitcherInterface):
 
         self.comms.send(cmd)
         response = self.comms.recv()
+
         # If '\r\n' appears in the middle of a response (as does with multi-output switchers), the middle '\r\n' is
         # replaced with a pipe for cleaner logging.  The trailing '\r\n' is first rstripped.
         logger.debug('_try_cmd:: cmd: "{}", response: "{}"'.
@@ -271,6 +298,7 @@ class KramerP3000(SwitcherInterface):
 
         try:
             self.open_connection()
+            self.comms.reset_input_buffer()
 
             for cmd in try_in_order:
                 result, response = self._try_cmd(cmd)
