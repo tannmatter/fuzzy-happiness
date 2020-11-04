@@ -53,6 +53,7 @@ import select
 import re
 import sys
 
+from enum import Enum
 from socket import socket, create_connection
 from time import sleep
 
@@ -82,7 +83,7 @@ class KramerP3000(SwitcherInterface):
     I know it works for our VS-211UHD and VS-42UHD. It allows for input switching and querying and
     that's pretty much it.  Uses the #ROUTE and #VID commands.
     """
-    class Error:
+    class Error(Enum):
         """Error regexes.  Varying by device, error codes may or may not contain one or more spaces
         between 'ERR' and the code number."""
         SYNTAX = rb'ERR\s*001'
@@ -130,7 +131,7 @@ class KramerP3000(SwitcherInterface):
                     else:
                         junk = ins_available[0].recv(BUFF_SIZE)
 
-    def __init__(self, device='/dev/ttyUSB0', *, comm_method='serial', baudrate=9600, timeout=0.5,
+    def __init__(self, device='/dev/ttyUSB0', *, comm_method='serial', baudrate=9600, timeout=0.25,
                  ip_address=None, ip_port=5000, ip_timeout=2.0, sw=None, inputs: int = 2):
         """Constructor
 
@@ -202,31 +203,88 @@ class KramerP3000(SwitcherInterface):
         logger.debug('power_off(): Unsupported')
         return None
 
-    def select_input(self, input_=1, output=1):
+    @property
+    def power_status(self):
+        logger.debug('power_status: Unsupported')
+        return None
+
+    def _try_cmd(self, cmd):
+        """Helper method for input_status and select_input
+        :param cmd The command string (bytes) to call
+        :return Tuple of error received (if any) and response.  Tuple of True and the response if no errors.
+        """
+        if isinstance(cmd, str):
+            cmd = bytes(cmd, 'ascii')
+        if not cmd.endswith(b'\r'):
+            cmd += b'\r'
+
+        self.comms.send(cmd)
+        response = self.comms.recv()
+        logger.debug('_try_cmd:: cmd: "{}", response: "{}"'.format(cmd.decode().rstrip(), response.decode().rstrip()))
+
+        # Return which error, if any, was received, or True and the response itself otherwise
+        # (These are not the only errors possible, just the only ones we're going to worry about here)
+        if re.search(self.Error.CMD_UNAVAILABLE.value, response):
+            return self.Error.CMD_UNAVAILABLE, response
+        elif re.search(self.Error.PARAM_OUT_OF_RANGE.value, response):
+            return self.Error.PARAM_OUT_OF_RANGE, response
+        elif re.search(self.Error.SYNTAX.value, response):
+            return self.Error.SYNTAX, response
+        else:
+            return True, response
+
+    def select_input(self, input_=1, output=0):
+        """Select an input to route to the specified output
+
+        Tries any of several Protocol 3000 routing/switching commands in order until one succeeds:
+        #ROUTE, #AV, #VID.  Note: We don't have any devices that use the #AV command, but if we're using
+        such a device in the future, it would be preferable to switch both audio and video together rather
+        than separately. For this reason, I place #AV before #VID in the hierarchy of commands to try if
+        #ROUTE is unrecognized. Unfortunately, there doesn't seem to be any way to #ROUTE all layers
+        together either. '#ROUTE *,*,1' gives a parameter out of range error, at least on the only device
+        I have available for testing (VS-42UHD).  Likewise, '#ROUTE? *,*' fails with the same error.
+
+        Parameters
+        ----------
+        input_ : int, optional
+            The input to route.  Defaults to 1.
+        output : int, optional
+            The output to route to.  Defaults to 0 which is remapped to '*' meaning all outputs.
+
+        Returns
+        -------
+        int
+            The input routed to if no errors are reported
+        """
+        # default to '*', meaning all outputs
+        if output == 0:
+            output = '*'
+
+        try_in_order = [
+            '#ROUTE 1,{},{}\r'.format(output, input_),
+            '#AV {}>{}\r'.format(input_, output),
+            '#VID {}>{}\r'.format(input_, output)
+        ]
+
         try:
             self.open_connection()
-            cmd = '#ROUTE 1,{},{}\r'.format(output, input_)
-            self.comms.send(cmd.encode())
-            response = self.comms.recv()
-            if re.search(self.Error.PARAM_OUT_OF_RANGE, response):
-                raise ValueError('Input or output number out of range', input_, output)
-            elif re.search(self.Error.CMD_UNAVAILABLE, response):
-                # try #VID instead
-                cmd = '#VID {}>{}\r'.format(input_, output)
-                self.comms.send(cmd.encode())
-                response = self.comms.recv()
-                if re.search(self.Error.PARAM_OUT_OF_RANGE, response):
-                    raise ValueError('Input or output number out of range', input_, output)
-                if re.search(self.Error.CMD_UNAVAILABLE, response):
-                    # hmmm.... how about #AV?
-                    cmd = '#AV {}>{}\r'.format(input_, output)
-                    self.comms.send(cmd.encode())
-                    response = self.comms.recv()
-                    if re.search(self.Error.PARAM_OUT_OF_RANGE, response):
-                        raise ValueError('Input or output number out of range', input_, output)
 
-            if b'ERR' not in response:
-                return input_
+            for cmd in try_in_order:
+                result, response = self._try_cmd(cmd)
+                if result == self.Error.CMD_UNAVAILABLE:
+                    # try the next one
+                    continue
+                elif result == self.Error.PARAM_OUT_OF_RANGE:
+                    raise ValueError('select_input(): Input or output number out of range - '
+                                     'input={}, output={}', input_, output)
+                elif result == self.Error.SYNTAX:
+                    raise SyntaxError('select_input(): KramerP3000 syntax error: {}'.format(cmd))
+                # if result is True (or just not b'') and no ERR is reported, we probably succeeded
+                elif result and b'ERR' not in response:
+                    return input_
+                else:
+                    raise Exception('select_input(): An unknown error was reported by the switcher: {}'.
+                                    format(response.decode()))
 
         except Exception:
             logger.error('select_input(): Exception occurred: ', exc_info=True)
@@ -234,89 +292,83 @@ class KramerP3000(SwitcherInterface):
             self.close_connection()
 
     @property
-    def power_status(self):
-        logger.debug('power_status: Unsupported')
-        return None
-
-    @property
     def input_status(self):
-        """"This tries to detect what our input>output routing assignment(s) is(are) using a few different commands.
+        """Get the input(s) assigned to our output(s)
+
+        This tries to detect what our input>output routing assignment(s) is(are) using a few different commands.
         Returns a list of integer input assignments. If the switcher only has a single output, the list will contain
         a single integer.
+
+        Returns
+        -------
+        list
+            A list of integers representing the inputs (in output numerical order) assigned to the switcher's outputs
         """
-        self.open_connection()
+
+        # If none of these work, we have a problem I think?
+        try_in_order = [
+            b'#ROUTE? 1,*\r',
+            b'#AV? *\r',
+            b'#VID? *\r',
+            b'#AV? 1\r',  # maybe it doesn't like the '*'?
+            b'#VID? 1\r'
+        ]
 
         try:
+            self.open_connection()
+
             # This is done first to ensure the read buffer is empty before executing our queries.
-            # Anything left in the buffer will prevent us from correctly parsing our query reponses.
+            # Anything left in the buffer could prevent us from correctly parsing our query reponses.
+            # KramerP3000 is bidirectional, so any button pressed on the switcher will output chatter
+            # into our read buffer!
             self.comms.reset_input_buffer()
 
-            # '1' means video layer, '*' means all destinations (outputs).  Should return a list of
-            # all video routing assignments.
-            self.comms.send(b'#ROUTE? 1,*\r')
-            response = self.comms.recv()
-            logger.debug('input_status: {}'.format(response.decode()))
-
-            if re.search(self.Error.CMD_UNAVAILABLE, response):
-                # Try the legacy '#VID? *'
-                self.comms.send(b'#VID? *\r')
-                response = self.comms.recv()
-                logger.debug('input_status: {}'.format(response.decode()))
-
-                if re.search(self.Error.CMD_UNAVAILABLE, response):
-                    # If it doesn't support this, it might be because of the '*' indicating all outputs?
-                    # Try just querying what output 1 is set to.
-                    self.comms.send(b'#VID? 1\r')
-                    response = self.comms.recv()
-                    logger.debug('input_status: {}'.format(response.decode()))
-
-                    if re.search(self.Error.CMD_UNAVAILABLE, response):
-                        # also unsupported?  let's bail.
-                        logger.debug('input_status: could not reliably determine input status')
-                        return None
-                    else:
-                        # must be a very picky single output switcher
-                        # output should look like this: b'~01@VID 1>1\r\n'
-                        #                                         ^that's the number we're looking for
-                        match = re.search(rb'~\d+@VID\s+(\d+)>\d+', response)
-                        if match:
-                            return [int(match.group(1))]
-
-                else:
-                    # output should look like this:
-                    # b'~01@VID #>#,#>#,...\r\n' - with commas separating each route assignment.
-                    #           ^   ^we want the first numbers in each set
-                    match = re.search(rb'~\d+@VID\s+([0-9>,]+)\r\n', response)
-                    if match:
-                        # If we matched, match.group(1) contains all our routing info (#>#,#>#,...)
-                        routing_info = match.group(1)
-
-                        # Split by commas if present
-                        routes = re.split(rb',', routing_info)
-                        # routes will be a list of byte strings that all look like b'#>#'
-                        # (If there are no commas, split returns a list with the single b'#>#')
+            for cmd in try_in_order:
+                result, response = self._try_cmd(cmd)
+                if result == self.Error.CMD_UNAVAILABLE:
+                    # try the next command
+                    continue
+                elif result == self.Error.PARAM_OUT_OF_RANGE:
+                    raise ValueError('input_status: Param out of range: {}'.format(cmd.decode()))
+                elif result == self.Error.SYNTAX:
+                    raise SyntaxError('input_status: KramerP3000 syntax error: {}'.format(cmd.decode()))
+                elif result and b'ERR' not in response:
+                    if b'ROUTE' in response:
+                        # If '#ROUTE? 1,*' worked, the result should look like this (according to the VS-42 output):
+                        # b'~01@ROUTE 1,1,1\r\n~01@ROUTE 1,2,1\r\n'
+                        #                 ^                  ^ The third number in each is the input
+                        routes = response.split(b'\r\n')
                         inputs = []
                         for route in routes:
-                            # We want the first number
-                            m = re.search(rb'(\d+)>\d+', route)
-                            if m:
-                                inputs.append(int(m.group(1)))
+                            match = re.search(rb'~\d+@ROUTE\s+\d+,\d+,(\d+)', route)
+                            if match:
+                                inputs.append(int(match.group(1)))
                         return inputs
+                    elif b'VID' in response or b'AV' in response:
+                        # If '#VID? *' or '#AV? *' worked, output should look like this:
+                        # b'~01@VID|AV #>#,#>#,...\r\n' - with commas separating each route assignment.
+                        #              ^   ^ The first number in each is the input
+                        match = re.search(rb'~\d+@(VID|AV)\s+([0-9>,]+)\r\n', response)
+                        if match:
+                            # If we matched, match.group(1) contains either 'VID' or 'AV', and
+                            # match.group(2) contains all our routing info (#>#,#>#,...)
+                            routing_info = match.group(2)
 
-            else:
-                # If '#ROUTE? 1,*' worked, the result should look like this (according to the VS-42 output):
-                # b'~01@ROUTE 1,1,1\r\n~01@ROUTE 1,2,1\r\n'
-                #                 ^14                ^The third number in each is the input
-                # first let's split by \r\n
-                routes = response.split(b'\r\n')
-                inputs = []
-                # as the response ends in b'\r\n', the last member of routes will be the empty byte string b''
-                for route in routes:
-                    match = re.search(rb'~\d+@ROUTE\s+\d+,\d+,(\d+)', route)
-                    if match:
-                        inputs.append(int(match.group(1)))
-                logger.debug('input_status(): {}'.format(inputs))
-                return inputs
+                            # Split by commas, if any
+                            routes = routing_info.split(b',')
+                            # routes will be a list of byte strings that all look like b'#>#'
+                            # (If there are no commas, split returns a list with one member: the entire string itself)
+                            inputs = []
+                            for route in routes:
+                                # We want the first number
+                                input_match = re.search(rb'(\d+)>\d+', route)
+                                if input_match:
+                                    inputs.append(int(input_match.group(1)))
+                            return inputs
+                else:
+                    # 'ERR' contained in response but not one we know about.  Better get out your manual!
+                    raise Exception('input_status: An unknown error was reported by the switcher: {}'.
+                                    format(response.decode()))
 
         except Exception:
             logger.error('input_status: Exception occurred: ', exc_info=True)
