@@ -8,6 +8,12 @@ Supporting the minimum feature set common to both (power on/off, switch input, g
 get lamp hours, get error information) as well as a few commands and features supported
 by only one or the other
 
-- rooms - example .json configs defining equipment present in a room/system 
+- drivers/switcher - drivers mostly for Kramer switchers.  Some for individual models,
+and some that work across a wide variety of models, including the ubiquitous 2x1 models
+that feature contact closure control.
 
-More to come later (web-based control, other types of equipment...)
+- drivers/tv - drivers for TVs.
+
+- rooms - example .json configs defining equipment present in a room/system.
+
+More to come later (a web-based generic configurable control system, more drivers...)
