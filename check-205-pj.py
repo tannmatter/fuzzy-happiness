@@ -6,7 +6,7 @@ if __name__ == "__main__":
     from datetime import datetime
 
     from sendmail import send_mail
-    from drivers.projector.NEC import NEC
+    from drivers.projector.nec import NEC
 
     pj_ip = '161.31.108.31'
     pj_port = 7142
@@ -19,9 +19,9 @@ if __name__ == "__main__":
     snapshot_script = '/home/mtanner/src/python/avcontrols/curl-snapshot.sh'
 
     my_projector = NEC(comm_method='tcp', ip_address=pj_ip, ip_port=pj_port)
-    result = my_projector.get_status()
+    result = my_projector.power_status
     if result is not None:
-        power_status = result['status']['power'].casefold()
+        power_status = result.casefold()
         if "power on" in power_status:
             print(pj_on)
             # curl a snapshot

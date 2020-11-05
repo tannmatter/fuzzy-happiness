@@ -1,6 +1,0 @@
-TODO:
-  - implement Kramer P3000 driver
-  - add debug & error logging to every module/class
-  - tidy up everything (better exception handling, etc)
-  - begin thinking about flask app organization
-  - create a simple test page and load script to demo all of our drivers in a single 'room' config
