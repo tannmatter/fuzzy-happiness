@@ -1,3 +1,30 @@
+""" GENERAL RULES OF THUMB:
+
+See section 2.3 "Responses", p. 11
+
+When a command is successful, the response is as follows:
+ - the high order nibble of the first byte is '2'
+ - the low order nibble is the same as the low order nibble of the first byte of the command
+ - the second byte is the same as the second byte of the command
+
+When a command error occurs, the response is as follows:
+ - the high order nibble of the first byte is 'A'
+ - the low order nibble is the same as the low order nibble of the first byte of the command
+ - the second byte is the same as the second byte of the command
+
+Universally, the 3rd and 4th bytes of any response are the projector ID numbers
+
+The 5th byte cannot reliably be used as an indication of success or error.  It is almost always
+'02' in the case of error but is also occasionally the same value in the case of success.
+Ignore this byte
+
+In the case of an error, bytes 6 and 7 are usually the error codes, as defined in NEC.cmd_errors
+
+In the case of command success, any returned data usually starts at byte 7.
+One exception is the "[037. INFORMATION REQUEST]" command detailed on page 32.
+It's returned data starts at byte 6.
+"""
+
 import sys
 from socket import socket, create_connection
 
@@ -6,7 +33,7 @@ from serial import Serial
 from utils.byteops import Byte
 from drivers.projector import ProjectorInterface
 
-RECVBUF = 512
+BUFF_SIZE = 512
 
 
 class NEC(ProjectorInterface):
@@ -33,7 +60,7 @@ class NEC(ProjectorInterface):
             elif isinstance(self.connection, socket):
                 return self.connection.send(data)
 
-        def recv(self, size=RECVBUF):
+        def recv(self, size=BUFF_SIZE):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
             elif isinstance(self.connection, socket):
@@ -111,7 +138,7 @@ class NEC(ProjectorInterface):
     status = {
         # Byte 7 (-<Data1>-) operation status
         # refer to [305-3. BASIC INFORMATION REQUEST], p. 83
-        6: {
+        'power': {
             0x00: 'Standby (Sleep)',
             0x04: 'Power On',
             0X05: 'Cooling',
@@ -119,7 +146,7 @@ class NEC(ProjectorInterface):
             0x0f: 'Standby (Power saving)',
             0x10: 'Network standby'
         },  # Byte 8 (-<Data2>-) content displayed
-        7: {
+        'display': {
             0x00: 'Video signal displayed',
             0x01: 'No signal',
             0x02: 'Viewer displayed',
@@ -157,7 +184,7 @@ class NEC(ProjectorInterface):
         (0x05, 0x07): 'APPS',
         # Byte 11 (-<Data5>-) Display signal type (only applies to video / s-video)
         # refer to [305-3. BASIC INFORMATION REQUEST], p. 84
-        10: {
+        'video_type': {
             0x00: 'NTSC3.58',
             0x01: 'NTSC4.43',
             0x02: 'PAL',
@@ -176,42 +203,22 @@ class NEC(ProjectorInterface):
             0x0f: 'PAL-L',
             0xff: 'Not video or s-video input'
         },  # Byte 12 (-<Data6>-) Video mute status
-        11: {
+        'video_mute': {
             0x00: False,
             0x01: True
         },  # Byte 13 (-<Data7>-) Sound mute status
-        12: {
+        'sound_mute': {
             0x00: False,
             0x01: True
         },  # Byte 14 (-<Data8>-) Onscreen mute status
-        13: {
+        'onscreen_mute': {
             0x00: False,
             0x01: True
         },  # Byte 15 (-<Data9>-) Video freeze status
-        14: {
+        'video_freeze': {
             0x00: False,
             0x01: True
         }  # Bytes 16 - 21 (-<Data10>-<Data15>-) reserved for system
-    }
-
-    lamp_info = {
-        # 6th byte of command/response
-        5: {
-            0x00: 'lamp_1',
-            0x01: 'lamp_2'
-        },  # 7th byte of command/response
-        6: {
-            0x01: 'usage_hours',
-            0x04: 'remaining_life'
-        }  # 8th - 11th bytes are requested data (in little endian)
-    }
-
-    # unused, just here for documentation
-    filter_info = {
-        # 6th byte of response
-        5: 'usage_hours',
-        # 10th byte of response
-        9: 'filter_alarm_start_time'
     }
 
     # error status flags
@@ -291,44 +298,44 @@ class NEC(ProjectorInterface):
                             Must be specified by configuration data as NEC has no command to determine this
                             Defaults to empty set
         """
-        if pj is not None:
-            self.projector = pj
-            self.lamp_count = 1
-            self.inputs_available = set()
 
-            if comm_method == 'serial':
+        self.projector = pj
+        self.lamp_count = 1
+        self.inputs_available = set()
+
+        if comm_method == 'serial':
+            try:
+                connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=timeout)
+            except Exception as inst:
+                print(inst)
+                sys.exit(1)
+            else:
+                self.comms = self.Comms()
+                self.comms.serial_device = serial_device
+                self.comms.serial_baud_rate = serial_baud_rate
+                self.comms.serial_timeout = timeout
+                self.comms.connection = connection
+                self.comms.connection.close()
+        elif comm_method == 'tcp':
+            if ip_address is not None and ip_port is not None:
                 try:
-                    connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=timeout)
+                    connection = create_connection((ip_address, ip_port))
                 except Exception as inst:
                     print(inst)
-                    sys.exit(1)
                 else:
                     self.comms = self.Comms()
-                    self.comms.serial_device = serial_device
-                    self.comms.serial_baud_rate = serial_baud_rate
-                    self.comms.serial_timeout = timeout
+                    self.comms.tcp_ip = ip_address
+                    self.comms.tcp_port = ip_port
                     self.comms.connection = connection
                     self.comms.connection.close()
-            elif comm_method == 'tcp':
-                if ip_address is not None and ip_port is not None:
-                    try:
-                        connection = create_connection((ip_address, ip_port))
-                    except Exception as inst:
-                        print(inst)
-                    else:
-                        self.comms = self.Comms()
-                        self.comms.tcp_ip = ip_address
-                        self.comms.tcp_port = ip_port
-                        self.comms.connection = connection
-                        self.comms.connection.close()
-                else:
-                    print("NEC: tcp connection requested but no address specified!")
-                    sys.exit(1)
             else:
-                raise Exception('The only valid values of comm_method are "tcp" and "serial"')
+                print("NEC: tcp connection requested but no address specified!")
+                sys.exit(1)
+        else:
+            raise Exception('The only valid values of comm_method are "tcp" and "serial"')
 
     @staticmethod
-    def __checksum(self, vals):
+    def __checksum(vals):
         """Calculate a one-byte checksum of all values"""
         if isinstance(vals, bytes) or isinstance(vals, list):
             return sum(i for i in vals) & 0xFF
@@ -380,7 +387,7 @@ class NEC(ProjectorInterface):
                     self.comms.connection.open()
 
                 self.comms.send(cmd_str)
-                result = self.comms.recv(RECVBUF)
+                result = self.comms.recv(BUFF_SIZE)
 
                 # close the connection after each command
                 self.comms.connection.close()
@@ -424,7 +431,7 @@ class NEC(ProjectorInterface):
             if len(data) == 2:
                 raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
             else:
-                power_state = self.status[6][data[6]]
+                power_state = self.status['power'][data[6]]
                 return power_state
 
     @property
@@ -621,7 +628,7 @@ class NEC(ProjectorInterface):
             if len(data) == 2:
                 raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
             else:
-                mute_status = self.status[11][data[11]]
+                mute_status = self.status['video_mute'][data[11]]
                 return mute_status
 
     @property
@@ -656,13 +663,13 @@ class NEC(ProjectorInterface):
                 # but wait... there's more! (than 2 bytes)
                 result = {
                     'status': {
-                        'power': self.status[6][data[6]],
-                        'display': self.status[7][data[7]],
+                        'power': self.status['power'][data[6]],
+                        'display': self.status['display'][data[7]],
                         'source': self.status[tuple(data[8:10])],
-                        'video_type': self.status[10][data[10]],
-                        'video_mute': self.status[11][data[11]],
-                        'sound_mute': self.status[12][data[12]],
-                        'video_freeze': self.status[14][data[14]]
+                        'video_type': self.status['video_type'][data[10]],
+                        'video_mute': self.status['video_mute'][data[11]],
+                        'sound_mute': self.status['sound_mute'][data[12]],
+                        'video_freeze': self.status['video_freeze'][data[14]]
                     }
                 }
                 return result
@@ -745,29 +752,3 @@ class NEC(ProjectorInterface):
         data = {**basic_info, **status}
 
         return data
-
-    # GENERAL RULES OF THUMB:
-
-    # See section 2.3 "Responses", p. 11
-
-    # when a command is successful, the response is as follows:
-    # - the high order nibble of the first byte is '2'
-    # - the low order nibble is the same as the low order nibble of the first byte of the command
-    # - the second byte is the same as the second byte of the command
-
-    # when a command error occurs, the response is as follows:
-    # - the high order nibble of the first byte is 'A'
-    # - the low order nibble is the same as the low order nibble of the first byte of the command
-    # - the second byte is the same as the second byte of the command
-
-    # universally, the 3rd and 4th bytes of any response are the projector ID numbers
-
-    # the 5th byte cannot reliably be used as an indication of success or error.  It is almost always
-    # '02' in the case of error but is also occasionally the same value in the case of success.
-    # Ignore this byte
-
-    # In the case of an error, bytes 6 and 7 are usually the error codes, as defined in NEC.cmd_errors
-
-    # In the case of command success, any returned data usually starts at byte 7.
-    # One exception is the "[037. INFORMATION REQUEST]" command detailed on page 32.
-    # It's returned data starts at byte 6.
