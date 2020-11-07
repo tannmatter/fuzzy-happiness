@@ -25,6 +25,8 @@ One exception is the "[037. INFORMATION REQUEST]" command detailed on page 32.
 It's returned data starts at byte 6.
 """
 
+import enum
+import logging
 import sys
 from socket import socket, create_connection
 
@@ -34,6 +36,21 @@ from utils.byteops import Byte
 from drivers.projector import ProjectorInterface
 
 BUFF_SIZE = 512
+
+logger = logging.getLogger('NEC')
+logger.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+# set this to debug if i start misbehaving
+ch.setLevel(logging.ERROR)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+fh = logging.FileHandler('avc.log')
+# set this to debug if i start misbehaving
+fh.setLevel(logging.WARNING)
+fh.setFormatter(formatter)
+logger.addHandler(fh)
 
 
 class NEC(ProjectorInterface):
@@ -49,10 +66,10 @@ class NEC(ProjectorInterface):
         # Serial or socket connection
         connection = None
         serial_device = None
-        serial_baud_rate = None
+        serial_baudrate = None
         serial_timeout = None
-        tcp_ip = None
-        tcp_port = None
+        ip_address = None
+        ip_port = None
 
         def send(self, data):
             if isinstance(self.connection, Serial):
@@ -282,57 +299,126 @@ class NEC(ProjectorInterface):
         }
     }
 
-    def __init__(self, ip_address=None, ip_port=7142, comm_method='tcp', serial_device=None,
-                 serial_baud_rate=None, timeout=0.1, pj=None):
+    def __init__(self, ip_address=None, *, port=7142, comm_method='tcp', serial_device=None,
+                 serial_baudrate=38400, serial_timeout=0.1, inputs: dict = None, pj=None):
         """Create an NEC projector driver instance and initialize a connection to the
-        projector over either serial (RS-232) or TCP. Default to TCP 7142
+        projector over either serial (RS-232) or TCP. Default to TCP 7142.  After
+        ip_address, all arguments should be keyword arguments.
 
-        NEC instance variables set here:
-
-        projector :         A reference back to the projector using this interface instance
-        comms :             Socket or serial communicaiton interface
-        lamp_count :        Number of lamps this projector has
-                            Must be specified by configuration data as there's no NEC command to retrieve this
-                            Defaults to 1
-        inputs_available :  Set of available inputs.
-                            Must be specified by configuration data as NEC has no command to determine this
-                            Defaults to empty set
+        Parameters
+        ----------
+        ip_address : str
+            The IP address (if comm_method=='tcp') of the projector.
+        port : int, optional
+            The port to connect on (if comm_method=='tcp').  Defaults to 7142.
+        comm_method : str, optional
+            The communication method.  Supported values are 'serial' and 'tcp'.
+            Defaults to 'tcp'.
+        serial_device : str, optional
+            The serial device to use (if comm_method=='serial').  Defaults to None.
+        serial_baudrate : int, optional
+            The baudrate to use (if comm_method=='serial').  Defaults to 38400.
+            NEC manual lists support for 115200, 38400, 19200, 9600, and 4800.
+            Only 38400 has been tested.
+        serial_timeout : float, optional
+            The read timeout for serial operations (if comm_method=='serial').
+            Defaults to 0.1
+        inputs : dict
+            A dictionary of supported inputs.  If running in a real world application,
+            this will be needed as NEC does not document a way to retrieve this
+            information from the projector. Any application using this driver would
+            be essentially flying blind, with no way of knowing if the application
+            controls would trigger errors for selecting non-existent inputs.
+            The dictionary should be of the format { 'INPUT_LABEL': b'byte_string', ... },
+            eg. { 'RGB_1': b'\x01', 'HDMI_1': b'\x1a',...}
+            This allows us to override the defaults located in the NEC.Input Enum, or
+            create a custom Input Enum at runtime using the Enum functional API.
+        pj : drivers.projector.Projector, optional
+            A reference back to the Projector object that uses this ProjectorInterface.
+            Default to None
         """
-
         self.projector = pj
         self.lamp_count = 1
-        self.inputs_available = set()
+        self.comms = self.Comms()
 
-        if comm_method == 'serial':
-            try:
-                connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=timeout)
-            except Exception as inst:
-                print(inst)
-                sys.exit(1)
-            else:
-                self.comms = self.Comms()
+        try:
+            if comm_method == 'serial':
+                connection = Serial(port=serial_device, baudrate=serial_baudrate, timeout=serial_timeout)
                 self.comms.serial_device = serial_device
-                self.comms.serial_baud_rate = serial_baud_rate
-                self.comms.serial_timeout = timeout
+                self.comms.serial_baudrate = serial_baudrate
+                self.comms.serial_timeout = serial_timeout
                 self.comms.connection = connection
                 self.comms.connection.close()
-        elif comm_method == 'tcp':
-            if ip_address is not None and ip_port is not None:
-                try:
-                    connection = create_connection((ip_address, ip_port))
-                except Exception as inst:
-                    print(inst)
-                else:
-                    self.comms = self.Comms()
-                    self.comms.tcp_ip = ip_address
-                    self.comms.tcp_port = ip_port
+            elif comm_method == 'tcp' or comm_method == 'TCP':
+                if ip_address is not None and port is not None:
+                    connection = create_connection((ip_address, port))
+                    self.comms.ip_address = ip_address
+                    self.comms.ip_port = port
                     self.comms.connection = connection
                     self.comms.connection.close()
+                else:
+                    raise UnboundLocalError("tcp connection requested but no address specified!")
             else:
-                print("NEC: tcp connection requested but no address specified!")
-                sys.exit(1)
-        else:
-            raise Exception('The only valid values of comm_method are "tcp" and "serial"')
+                raise ValueError("comm_method should be 'tcp' or 'serial'")
+
+            # allow customizing the inputs defined in NEC.Input...
+            if inputs and isinstance(inputs, dict):
+                # ...by creating a new Enum that merges the two input sets
+                self.my_inputs = enum.Enum(
+                    'MyInputs', self.__customize_inputs(inputs),
+                    module=__name__, qualname='drivers.projector.nec.NEC.MyInputs'
+                )
+
+            # or just use the default provided by the driver
+            else:
+                self.my_inputs = self.Input
+
+        except Exception as e:
+            logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
+            sys.exit(1)
+
+    def __customize_inputs(self, inputs: dict):
+        """Setup custom input values
+
+        This sets up custom inputs by merging the existing NEC.Input Enum values with new
+        ones defined by the 'inputs' param.  Keys that are present in both places will be
+        assigned the new value specified by the dict, and added to a new custom input dict.
+        Keys that are present only in the existing NEC.Input Enum are added to the new dict
+        as is, and keys that are present only in the 'inputs' param are added to the new
+        dict with their associated value.
+
+        Parameters
+        ----------
+        inputs : dict
+            dict of new input keys and/or values
+
+        Returns
+        -------
+        dict
+            The custom input dict
+        """
+        custom_inputs = {}
+
+        # (Note: Because of the way defining Enum values works (https://docs.python.org/3/library/enum.html),
+        # doing the part below first ensures that our new input names become the "official" names of the
+        # new MyInputs Enum members, whereas the old names become "aliases" for the members.)
+
+        # This allows us to add new inputs (or rename existing inputs)...
+        for key, value in inputs.items():
+            if key not in self.Input.__members__.keys():
+                custom_inputs.update({key: value})
+
+        # ... and this allows us to reassign existing input enum values
+        # when they don't work for a particular projector model...
+        for key in self.Input.__members__.keys():
+            # if this key also exists in the new input dict, use the new value
+            if key in inputs.keys():
+                custom_inputs.update({key: inputs[key]})
+            # otherwise, use the default value already defined
+            else:
+                custom_inputs.update({key: self.Input[key].value})
+
+        return custom_inputs
 
     @staticmethod
     def __checksum(vals):
@@ -346,7 +432,7 @@ class NEC(ProjectorInterface):
         """Destructor.  Ensure that if a serial or socket interface was opened,
         it is closed whenever we destroy this object
         """
-        if self.comms is not None:
+        if self.comms.connection:
             self.comms.connection.close()
 
     def __cmd(self, cmd=Command.STATUS, *params, checksum_required=False):
@@ -362,13 +448,13 @@ class NEC(ProjectorInterface):
                                executed.
         checksum_required    : bool
                                True if we need to calculate and send a checksum,
-                               False otherwise
+                               False otherwise.  Defaults to False.
 
-        Considerations
-        --------------
+        Notes
+        -----
         Ensure that the read buffer is large enough to read all output from
         any command.  Otherwise a subsequent read will return unexpected
-        output from the last command run, leading to parsing errors!
+        output from the last command run, leading to parsing errors.
         """
         cmd_str = cmd.value
         if len(params) > 0:
@@ -379,9 +465,9 @@ class NEC(ProjectorInterface):
 
         try:
             if self.comms is not None:
-                if self.comms.tcp_ip is not None:
+                if self.comms.ip_address is not None:
                     self.comms.connection = create_connection(
-                        (self.comms.tcp_ip, self.comms.tcp_port)
+                        (self.comms.ip_address, self.comms.ip_port)
                     )
                 elif self.comms.serial_device is not None:
                     self.comms.connection.open()
@@ -451,8 +537,10 @@ class NEC(ProjectorInterface):
                 # projector is cooling down, ignore this request
                 return False
 
-    def get_input_status(self) -> Input:
-        """Return the Input enum member matching the current input terminal"""
+    def get_input_status(self):
+        """Return the Input enum member matching the current input terminal
+        todo: make this a hell of a lot clearer
+        """
         data = self.__cmd(cmd=self.Command.STATUS)
         if data is not None:
             if len(data) == 2:
@@ -464,7 +552,7 @@ class NEC(ProjectorInterface):
                 # It's impossible to determine for sure whether we're looking at HDMI 1 or HDMI 2 or DP
                 # So we'll give it our best guess...
                 input_group = data[8]  # should be 0x01, 0x02, or 0x03 / 1, 2, or 3
-                input_ = self.Input.DIGITAL_1
+                input_ = self.my_inputs.DIGITAL_1
 
                 if "HDMI" in input_string or "HDBaseT" in input_string:
                     input_ = "DIGITAL_" + str(input_group)
@@ -477,10 +565,10 @@ class NEC(ProjectorInterface):
                 elif "Computer" in input_string:
                     input_ = "RGB_" + str(input_group)
 
-                # get the legitimate input values & check whether input_ is one of them
-                if input_ in self.Input.__members__:
+                # get our legitimate input values & check whether input_ is one of them
+                if input_ in self.my_inputs.__members__:
                     # yep, let's select that value and return it
-                    apparent_input = self.Input[input_]
+                    apparent_input = self.my_inputs[input_]
                     return apparent_input
                 else:
                     return input_
@@ -489,19 +577,13 @@ class NEC(ProjectorInterface):
     def input_status(self):
         return self.get_input_status()
 
-    def select_input(self, input_=Input.RGB_1) -> Input:
+    def select_input(self, input_):
         """Switch to a different input terminal on the projector and return the Input enum member
         matching the input we switched to.
 
         Parameters
         ----------
-        input_   : Input(Enum)
-                   One of the following values: NEC.Input.RGB_1 (0x01),
-                   NEC.Input.RGB_2 (0x02), NEC.Input.DIGITAL_1 (0x1a),
-                   NEC.Input.DIGITAL_2 (0x1b), NEC.Input.VIDEO_1 (0x06),
-                   NEC.Input.VIDEO_2 (0x0b), NEC.Input.VIDEO_3 (0x10),
-                   NEC.Input.DISPLAYPORT (0xa6), NEC.Input.DIGITAL_1_ALT (0xa1),
-                   NEC.Input.DIGITAL_2_ALT (0xa2), NEC.Input.DISPLAYPORT_ALT (0x1b)
+        input_   : MyInputs(Enum) member
 
         Notes
         -----
@@ -513,48 +595,10 @@ class NEC(ProjectorInterface):
         input was, I believe it reported whichever value I had sent, as if both sets of inputs were
         completely valid to that model.
 
-        If one of these inputs is specified, both manual-specified variations will be tried
-        before reporting failure.
+        __init__() now allows customized input lists, so you should specify your custom input dict
+        at load if you are concerned about undefined behavior.
         """
-        # special case needed for HDMI & Displayport switching...
-        # NEC projectors vary - some treat HDMI 1 as 0x1a, others as 0xa1,..
-        # we need to try both before raising an exception.
-
-        # see which input we are trying to select...
-        input_name = input_.name
-        # if it's one of those problematic inputs that vary...
-        if "DIGITAL" in input_name or "DISPLAYPORT" in input_name:
-            # default value for input_alt so we don't try to select None
-            input_alt = self.Input.DIGITAL_1_ALT
-
-            # determine which one we were trying to select to begin with: DIGITAL_1 or DIGITAL_1_ALT, etc
-            if "_ALT" not in input_name:
-                # input name doesn't contain '_ALT' so input_alt will be the version with '_ALT' appended
-                input_alt = self.Input[input_name + '_ALT']
-            else:
-                # input name contains '_ALT' already so input_alt will be the version with '_ALT' removed
-                input_alt = self.Input[input_name.replace('_ALT', '')]
-
-            # try both input_ and input_alt before giving up...
-
-            error_code = self.__cmd(self.Command.SWITCH_INPUT, input_, checksum_required=True)
-            # the NEC error code for "invalid input terminal"
-            if error_code == (0x01, 0x01):
-                try_again_result = self.__cmd(self.Command.SWITCH_INPUT, input_alt, checksum_required=True)
-                # if any error is reported here, we fail
-                if len(try_again_result) == 2:
-                    raise Exception(try_again_result, 'An error occurred: ' + self.cmd_errors[try_again_result])
-                # otherwise it appears we succeeded in switching to input_alt ?
-                else:
-                    return input_alt
-            # if any other error was reported the first time, we fail
-            elif len(error_code) == 2:
-                raise Exception(error_code, 'An error occurred: ' + self.cmd_errors[error_code])
-            # otherwise, it appears we succeeded in switching to input_ ?
-            else:
-                return input_
-        # if we're not working with the digital inputs it's a lot easier... RGB 1 & 2 are almost always 0x01 and 0x02
-        else:
+        if input_ in self.my_inputs:
             error_code = self.__cmd(self.Command.SWITCH_INPUT, input_, checksum_required=True)
             if len(error_code) == 2:
                 raise Exception(error_code, 'An error occurred: ' + self.cmd_errors[error_code])

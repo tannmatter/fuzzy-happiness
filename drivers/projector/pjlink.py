@@ -3,7 +3,9 @@ from socket import socket, create_connection
 
 from drivers.projector import ProjectorInterface
 
-RECVBUF = 512
+BUFF_SIZE = 512
+
+
 
 
 class PJLink(ProjectorInterface):
@@ -17,14 +19,14 @@ class PJLink(ProjectorInterface):
         """
         # socket connection
         connection = None
-        tcp_ip = None
-        tcp_port = 4352
+        ip_address = None
+        ip_port = 4352
 
         def send(self, data):
             if isinstance(self.connection, socket):
                 return self.connection.send(data)
 
-        def recv(self, size=RECVBUF):
+        def recv(self, size=BUFF_SIZE):
             if isinstance(self.connection, socket):
                 return self.connection.recv(size)
 
@@ -52,9 +54,9 @@ class PJLink(ProjectorInterface):
         NETWORK = b'51'
 
     class Command(ProjectorInterface.Command):
-        """Available commands that work on most models
+        """Command strings.
         """
-        # - class 1 commands
+        # All commands are class 1
         # - parameterless commands
         POWER_ON = b'%1POWR 1\x0d'
         POWER_OFF = b'%1POWR 0\x0d'
@@ -69,14 +71,6 @@ class PJLink(ProjectorInterface):
 
         # - commands with parameters
         SWITCH_INPUT = b'%1INPT '  # + input number + \x0d
-
-    # unneeded but here for consistency to match the NEC driver
-    class Lamp(ProjectorInterface.Lamp):
-        pass
-
-    # same
-    class LampInfo(ProjectorInterface.LampInfo):
-        pass
 
     cmd_errors = {
         b'ERR1': 'Unrecognized command',
@@ -139,8 +133,8 @@ class PJLink(ProjectorInterface):
                 print(inst)
             else:
                 self.comms = self.Comms()
-                self.comms.tcp_ip = ip_address
-                self.comms.tcp_port = ip_port
+                self.comms.ip_address = ip_address
+                self.comms.ip_port = ip_port
                 self.comms.connection = conn
                 self.comms.connection.close()
 
@@ -167,20 +161,25 @@ class PJLink(ProjectorInterface):
             self.comms.connection.close()
 
     def __cmd(self, cmd=Command.POWER_STATUS, *params):
-        """Excutes a given command, optionally with parameters
-        and returns any error codes received or the full
-        command output if an error did not appear to occur.
+        """Execute command
+
+        Excutes a given command, optionally with parameters and returns any
+        command output received.
 
         Parameters
         ----------
-        cmd              : Command(Enum)
-        *params          : Input(Enum)
+        cmd : Command(Enum)
+            The command Enum to execute
+        *params : Input(Enum)
+            Any additional parameters to the command.  In reality, this should
+            only be an Input(Enum) as select_input() is the only supported command
+            with a parameter.
 
-        Considerations
-        --------------
+        Notes
+        -----
         Ensure that the read buffer is large enough to read all output from
         any command.  Otherwise a subsequent read will return unexpected
-        output from the last command run, leading to parsing errors!
+        output from the last command run, leading to parsing errors.
         """
         cmd_str = cmd.value
         if len(params) > 0:
@@ -191,16 +190,16 @@ class PJLink(ProjectorInterface):
 
         try:
             if self.comms is not None:
-                if self.comms.tcp_ip is not None:
+                if self.comms.ip_address is not None:
                     self.comms.connection = create_connection(
-                        (self.comms.tcp_ip, self.comms.tcp_port)
+                        (self.comms.ip_address, self.comms.ip_port)
                     )
 
                 self.comms.send(cmd_str)
                 # first thing returned is always some junk
                 # ("%1PJLINK" followed by 0 or 1 depending on whether authentication is enabled)
-                junk_data = self.comms.recv(RECVBUF)
-                result = self.comms.recv(RECVBUF)
+                junk_data = self.comms.recv(BUFF_SIZE)
+                result = self.comms.recv(BUFF_SIZE)
 
                 # close the connection after each command
                 self.comms.connection.close()

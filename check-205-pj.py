@@ -18,7 +18,7 @@ if __name__ == "__main__":
     pj_off= "The projector in {0} is turned off.".format(room)
     snapshot_script = '/home/mtanner/src/python/avcontrols/curl-snapshot.sh'
 
-    my_projector = NEC(comm_method='tcp', ip_address=pj_ip, ip_port=pj_port)
+    my_projector = NEC(comm_method='tcp', ip_address=pj_ip, port=pj_port)
     result = my_projector.power_status
     if result is not None:
         power_status = result.casefold()
