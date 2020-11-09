@@ -39,18 +39,17 @@ BUFF_SIZE = 512
 
 logger = logging.getLogger('NEC')
 logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-# set this to debug if i start misbehaving
-ch.setLevel(logging.ERROR)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
-fh = logging.FileHandler('avc.log')
-# set this to debug if i start misbehaving
-fh.setLevel(logging.WARNING)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.ERROR)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+file_handler = logging.FileHandler('avc.log')
+file_handler.setLevel(logging.WARNING)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 
 class NEC(ProjectorInterface):
@@ -86,18 +85,23 @@ class NEC(ProjectorInterface):
     class Input(ProjectorInterface.Input):
         """Inputs for switching.
         See supplementary information regarding [018. INPUT SW CHANGE], Appendix pp. 18-22
+        These are mostly here for documentation as inputs should ideally be passed to the constructor.
         """
         RGB_1 = b'\x01'
         RGB_2 = b'\x02'
-        DIGITAL_1 = b'\x1a'        # HDMI
-        DIGITAL_1_ALT = b'\xa1'    # Some models it's '0x1a' and some it's '0xa1'... <shakes head>
-        DIGITAL_2 = b'\x1b'        # We own some of each model, ie. NP-M322X is 0xA1, NP-M311X is 0x1A
-        DIGITAL_2_ALT = b'\xa2'    # same here, gotta try to support em all...
+        RGB_3 = b'\x03'
+        HDMI_1 = b'\x1a'
+        HDMI_1_ALT = b'\xa1'       # On some models HDMI is '0x1a' and some it's '0xa1'...
+        HDMI_2 = b'\x1b'
+        HDMI_2_ALT = b'\xa2'
         VIDEO_1 = b'\x06'
-        VIDEO_2 = b'\x0b'          # S-Video typically
-        VIDEO_3 = b'\x10'          # Component
+        VIDEO_2 = b'\x0b'
+        VIDEO_3 = b'\x10'
         DISPLAYPORT = b'\xa6'
-        DISPLAYPORT_ALT = b'\x1b'  # ...and here
+        DISPLAYPORT_ALT = b'\x1b'
+        USB_VIEWER_A = b'\x1f'
+        USB_VIEWER_B = b'\x22'
+        NETWORK = b'\x20'
 
     class Lamp(ProjectorInterface.Lamp):
         """Lamp number for models with more than one lamp
@@ -177,17 +181,17 @@ class NEC(ProjectorInterface):
         (0x01, 0x01): 'Computer 1',
         (0x01, 0x02): 'Video',
         (0x01, 0x03): 'S-video',
-        (0x01, 0x06): 'HDMI',
+        (0x01, 0x06): 'HDMI 1',
         (0x01, 0x07): 'Viewer / USB',
         (0x01, 0x0a): 'Stereo DVI',
         (0x01, 0x20): 'DVI',
-        (0x01, 0x21): 'HDMI',
+        (0x01, 0x21): 'HDMI 1',
         (0x01, 0x22): 'DisplayPort',
         (0x01, 0x23): 'SLOT',
         (0x01, 0x27): 'HDBaseT',
-        (0x01, 0x28): 'SDI',
+        (0x01, 0x28): 'SDI 1',
         (0x02, 0x01): 'Computer 2',
-        (0x02, 0x06): 'HDMI 2 / DP',
+        (0x02, 0x06): 'HDMI 2',
         (0x02, 0x07): 'LAN',
         (0x02, 0x21): 'HDMI 2',
         (0x02, 0x22): 'DisplayPort 2',
@@ -338,7 +342,6 @@ class NEC(ProjectorInterface):
             Default to None
         """
         self.projector = pj
-        self.lamp_count = 1
         self.comms = self.Comms()
 
         try:
@@ -378,65 +381,67 @@ class NEC(ProjectorInterface):
             sys.exit(1)
 
     def __customize_inputs(self, inputs: dict):
-        """Setup custom input values
+        """Set up custom input values
 
-        This sets up custom inputs by merging the existing NEC.Input Enum values with new
-        ones defined by the 'inputs' param.  Keys that are present in both places will be
-        assigned the new value specified by the dict, and added to a new custom input dict.
-        Keys that are present only in the existing NEC.Input Enum are added to the new dict
-        as is, and keys that are present only in the 'inputs' param are added to the new
-        dict with their associated value.
+        Set up custom inputs by merging the existing NEC.Input Enum values with new
+        ones defined by the 'inputs' param.
 
         Parameters
         ----------
         inputs : dict
-            dict of new input keys and/or values
+            dict of new input key/value pairs
 
         Returns
         -------
         dict
-            The custom input dict
+            The merged input dict
         """
-        custom_inputs = {}
-
-        # (Note: Because of the way defining Enum values works (https://docs.python.org/3/library/enum.html),
-        # doing the part below first ensures that our new input names become the "official" names of the
-        # new MyInputs Enum members, whereas the old names become "aliases" for the members.)
+        merged_inputs = {}
 
         # This allows us to add new inputs (or rename existing inputs)...
         for key, value in inputs.items():
             if key not in self.Input.__members__.keys():
-                custom_inputs.update({key: value})
+                merged_inputs.update({key: value})
 
-        # ... and this allows us to reassign existing input enum values
+        # ... and this allows us to reassign existing values
         # when they don't work for a particular projector model...
         for key in self.Input.__members__.keys():
-            # if this key also exists in the new input dict, use the new value
+            # If this key also exists in the new input dict, use the new value
             if key in inputs.keys():
-                custom_inputs.update({key: inputs[key]})
-            # otherwise, use the default value already defined
+                merged_inputs.update({key: inputs[key]})
+            # Otherwise, use the default value already defined,
             else:
-                custom_inputs.update({key: self.Input[key].value})
+                merged_inputs.update({key: self.Input[key].value})
 
-        return custom_inputs
+        return merged_inputs
 
     @staticmethod
     def __checksum(vals):
-        """Calculate a one-byte checksum of all values"""
+        """Calculate a one-byte checksum of all values
+
+        Parameters
+        ----------
+        vals : bytes | int
+            bytes to checksum or a single int val to checksum
+        """
         if isinstance(vals, bytes) or isinstance(vals, list):
             return sum(i for i in vals) & 0xFF
         elif isinstance(vals, int):
             return vals & 0xFF
 
     def __del__(self):
-        """Destructor.  Ensure that if a serial or socket interface was opened,
-        it is closed whenever we destroy this object
+        """Destructor.
+
+        Ensure that if a serial or socket interface was opened,
+        it is closed whenever we destroy this object.
         """
         if self.comms.connection:
             self.comms.connection.close()
 
     def __cmd(self, cmd=Command.STATUS, *params, checksum_required=False):
-        """Executes a given command, optionally with parameters and a checksum
+        """Execute a command and return any output received
+
+        Executes a given command, optionally with parameters and a checksum
         and returns any error codes received (errors are 2 bytes) or the full
         command output if an error did not appear to occur.
 
@@ -486,39 +491,69 @@ class NEC(ProjectorInterface):
                     return error_code
                 else:
                     return result
-        except Exception as inst:
-            print(inst)
-            sys.exit(1)
+        except (IOError, OSError) as e:
+            # An exception here implies a serious problem: communication is broken.
+            logger.error('__cmd(): Exception occurred: {}'.format(e.args), exc_info=True)
+            # Propagate all exceptions upward and let the application decide what to do with them.
+            raise e
 
     def power_on(self) -> bool:
-        """Power the projector on.  Return True on success, or raise exception on failure."""
-        data = self.__cmd(cmd=self.Command.POWER_ON)
-        if data is not None:
-            # only 2 bytes returned indicates we saw an error and
-            # sent back just the error tuple
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                return True
+        """Power the projector on.
+
+        Returns
+        -------
+        True on success
+        """
+        try:
+            data = self.__cmd(cmd=self.Command.POWER_ON)
+            if data is not None:
+                # only 2 bytes returned indicates we saw an error and
+                # sent back just the error tuple
+                if len(data) == 2:
+                    raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+                else:
+                    return True
+        except Exception as e:
+            logger.error('Exception: {}'.format(e.args))
+            raise e
 
     def power_off(self) -> bool:
-        """Power the projector off.  Return True on success, or raise exception on failure."""
-        data = self.__cmd(cmd=self.Command.POWER_OFF)
-        if data is not None:
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                return True
+        """Power the projector off.
+
+        Returns
+        -------
+        True on success
+        """
+        try:
+            data = self.__cmd(cmd=self.Command.POWER_OFF)
+            if data is not None:
+                if len(data) == 2:
+                    raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+                else:
+                    return True
+        except Exception as e:
+            logger.error('Exception: {}'.format(e.args))
+            raise e
 
     def get_power_status(self) -> str:
-        """Return a string representing the power state of the projector."""
-        data = self.__cmd(cmd=self.Command.STATUS)
-        if data is not None:
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                power_state = self.status['power'][data[6]]
-                return power_state
+        """Return a string representing the power state of the projector.
+
+        Returns
+        -------
+        str
+            Power status string
+        """
+        try:
+            data = self.__cmd(cmd=self.Command.STATUS)
+            if data is not None:
+                if len(data) == 2:
+                    raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+                else:
+                    power_state = self.status['power'][data[6]]
+                    return power_state
+        except Exception as e:
+            logger.error('Exception: {}'.format(e.args))
+            raise e
 
     @property
     def power_status(self):
@@ -526,7 +561,13 @@ class NEC(ProjectorInterface):
 
     def power_toggle(self):
         """Toggle the power on/off.
-        Return True on success, False if the projector is still cooling down."""
+
+        Returns
+        -------
+        bool
+            True on success, False if power_status indicates projector is neither on nor in standby.
+            This likely means it is cooling down.
+        """
         power_status = self.get_power_status()
         if power_status is not None:
             if "power on" in power_status.casefold():
@@ -538,88 +579,133 @@ class NEC(ProjectorInterface):
                 return False
 
     def get_input_status(self):
-        """Return the Input enum member matching the current input terminal
-        todo: make this a hell of a lot clearer
+        """Return the current input terminal or a default if unable to determine
+
+        Returns
+        -------
+        NEC.Input|MyInputs
+            The Input or MyInputs enum member that appears to be the currently
+            selected input terminal.  If it's unable to determine this, an input we never use
+            (USB_VIEWER_A) is returned.  This should prompt an investigation into the logs to
+            figure out what went wrong.
         """
-        data = self.__cmd(cmd=self.Command.STATUS)
-        if data is not None:
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                input_string = self.status[tuple(data[8:10])]
-                # NEC's specs are all over the board here... individual models differ from
-                # one another within a single generation and each generation some number changes...
-                # It's impossible to determine for sure whether we're looking at HDMI 1 or HDMI 2 or DP
-                # So we'll give it our best guess...
-                input_group = data[8]  # should be 0x01, 0x02, or 0x03 / 1, 2, or 3
-                input_ = self.my_inputs.DIGITAL_1
-
-                if "HDMI" in input_string or "HDBaseT" in input_string:
-                    input_ = "DIGITAL_" + str(input_group)
-                elif "DP" in input_string or "DisplayPort" in input_string:
-                    input_ = "DISPLAYPORT"
-                elif "S-video" in input_string or "Component" in input_string:
-                    input_ = "VIDEO_2"
-                elif "Video" in input_string:
-                    input_ = "VIDEO_1"
-                elif "Computer" in input_string:
-                    input_ = "RGB_" + str(input_group)
-
-                # get our legitimate input values & check whether input_ is one of them
-                if input_ in self.my_inputs.__members__:
-                    # yep, let's select that value and return it
-                    apparent_input = self.my_inputs[input_]
-                    return apparent_input
+        try:
+            data = self.__cmd(cmd=self.Command.STATUS)
+            if data is not None:
+                if len(data) == 2:
+                    raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
                 else:
-                    return input_
+                    # The default input to return if we are unable to determine anything.
+                    # Seeing this should let us know something is up, so we will check our log.
+                    default = self.my_inputs.USB_VIEWER_A
+
+                    vals = tuple(data[8:10])
+                    if vals not in self.status.keys():
+                        logger.error('get_input_status(): unrecognized input value {}\n'
+                                     'This means your NEC documentation is out of date!  Find a newer manual.'
+                                     .format(vals))
+                        return default
+
+                    input_string = self.status[vals]
+                    # recommend always logging this
+                    logger.info('get_input_status(): {} : {}'.format(vals, input_string))
+
+                    # NEC makes this more difficult than it should be. Input setting and getting
+                    # use different values, and the manual implies those values vary by model.
+                    # So we'll have to give it our best guess...
+
+                    # input_group (first number) should ordinarily be 0x01, 0x02, or 0x03
+                    input_group = data[8]
+
+                    # If it's 0x04 or 0x05, or if the 2nd number is 0x07, it's probably actually
+                    # on viewer or LAN (which would be weird... maybe someone fiddling with the remote?)
+                    if input_group > 0x03 or data[9] == 0x07:
+                        return default
+
+                    guess = ""
+
+                    if "Computer" in input_string:
+                        guess = "RGB_" + str(input_group)
+                    elif "HDMI" in input_string or "HDBaseT" in input_string:
+                        guess = "HDMI_" + str(input_group)
+                    elif "Video" in input_string:
+                        guess = "VIDEO_1"
+                    elif "DisplayPort" in input_string:
+                        guess = "DISPLAYPORT"
+                    elif "S-video" in input_string or "Component" in input_string:
+                        guess = "VIDEO_2"
+
+                    # Get our legitimate input values & check whether our guess is one of them
+                    if guess in self.my_inputs.__members__:
+                        best_guess = self.my_inputs[guess]
+                        return best_guess
+                    else:
+                        logger.error('get_input_status(): unable to reliably determine input from values: {}\n'
+                                     'Maybe your documentation is out of date?'.format(vals))
+                        return default
+        except Exception as e:
+            logger.error('Exception: {}'.format(e.args))
+            raise e
 
     @property
     def input_status(self):
         return self.get_input_status()
 
     def select_input(self, input_):
-        """Switch to a different input terminal on the projector and return the Input enum member
-        matching the input we switched to.
+        """Switch to an input terminal
+
+        Switch to a different input terminal on the projector and return the input we switched to
+        if successful.
 
         Parameters
         ----------
-        input_   : MyInputs(Enum) member
+        input_   : self.my_inputs Enum member
+            NEC.Input or MyInputs enum member (checked for membership in self.my_inputs).
+            If this driver object was initialized with a custom input dict, self.my_inputs
+            will be full of MyInputs Enum members.  Otherwise it will be a reference to
+            the NEC.Input default input Enum defined in this module.
 
-        Notes
-        -----
-        The value of HDMI 1, HDMI 2, and DisplayPort inputs vary from model to model (according
-        to the manual, but I have found some inaccuracies in their reporting). As an odd example,
-        an NP-M300X will return an error code if you try to set it to HDMI 0xA1, but will happily
-        accept 0x1A.  However, an NP-M403H I tested in our conference room will accept either one
-        and correctly set the input to HDMI 1... when later queried to determine what the current
-        input was, I believe it reported whichever value I had sent, as if both sets of inputs were
-        completely valid to that model.
-
-        __init__() now allows customized input lists, so you should specify your custom input dict
-        at load if you are concerned about undefined behavior.
+        Returns
+        -------
+        input_
+            The same Input or MyInputs enum member selected
         """
-        if input_ in self.my_inputs:
-            error_code = self.__cmd(self.Command.SWITCH_INPUT, input_, checksum_required=True)
-            if len(error_code) == 2:
-                raise Exception(error_code, 'An error occurred: ' + self.cmd_errors[error_code])
+        try:
+            if input_ in self.my_inputs:
+                data = self.__cmd(self.Command.SWITCH_INPUT, input_, checksum_required=True)
+                if data is not None:
+                    if len(data) == 2:
+                        raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+                    else:
+                        # return the new input selected
+                        return input_
             else:
-                # return the new input selected
-                return input_
+                raise TypeError('parameter should be of type {}'.format(type(self.my_inputs)))
+        except Exception as e:
+            logger.error('Exception: {}'.format(e.args))
+            raise e
 
     def get_errors(self) -> list:
-        """Return information about any errors the projector is currently experiencing"""
-        data = self.__cmd(self.Command.GET_ERRORS)
-        if data is not None:
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                # error status is a bitfield
-                errors = []
-                for byte in self.error_status:
-                    for bit in self.error_status[byte]:
-                        if data[byte] & bit:
-                            errors.append(self.error_status[byte][bit])
-                return errors
+        """Return information about any errors the projector is reporting
+
+        This corresponds to the messages in the troubleshooting section of the manual.
+        """
+        try:
+            data = self.__cmd(self.Command.GET_ERRORS)
+            if data is not None:
+                if len(data) == 2:
+                    raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+                else:
+                    # error status is a bitfield
+                    errors = []
+                    for byte in self.error_status:
+                        for bit in self.error_status[byte]:
+                            if data[byte] & bit:
+                                errors.append(self.error_status[byte][bit])
+                    return errors
+        except Exception as e:
+            logger.error('Exception: {}'.format(e.args))
+            raise e
 
     @property
     def errors(self):
@@ -634,64 +720,88 @@ class NEC(ProjectorInterface):
                    NEC.Lamp.LAMP_2 (0x01). 0x01 is only valid for models with
                    multiple lamps.
         """
-        # get usage hours
-        data = self.__cmd(self.Command.LAMP_INFO, lamp, self.LampInfo.LAMP_USAGE,
-                          checksum_required=True)
-        # empty data set
-        result = {}
+        try:
+            # get usage hours
+            data = self.__cmd(self.Command.LAMP_INFO, lamp, self.LampInfo.LAMP_USAGE,
+                              checksum_required=True)
+            # empty data set
+            result = {}
 
-        if data is not None:
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                seconds = int.from_bytes(data[7:11], 'little')
-                hours = seconds // 3600
-                # add to our data set
-                result.update({'usage': hours})
+            if data is not None:
+                if len(data) == 2:
+                    raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+                else:
+                    seconds = int.from_bytes(data[7:11], 'little')
+                    hours = seconds // 3600
+                    # add to our data set
+                    result.update({'usage': hours})
 
-                # try to get remaining lamp life
-                data2 = self.__cmd(self.Command.LAMP_INFO, lamp,
-                                   self.LampInfo.LAMP_LIFE, checksum_required=True)
+                    # try to get remaining lamp life
+                    data2 = self.__cmd(self.Command.LAMP_INFO, lamp,
+                                       self.LampInfo.LAMP_LIFE, checksum_required=True)
 
-                if data2 is not None:
-                    if len(data2) == 2:
-                        raise Exception(data2, 'An error occurred: ' + self.cmd_errors[data2])
-                    else:
-                        life_data = int.from_bytes(data2[7:11], 'little')
-                        life = '{0}%'.format(life_data)
-                        # add to our data set
-                        result.update({'life': life})
+                    if data2 is not None:
+                        if len(data2) == 2:
+                            raise Exception(data2, 'An error occurred: ' + self.cmd_errors[data2])
+                        else:
+                            life_data = int.from_bytes(data2[7:11], 'little')
+                            life = '{0}%'.format(life_data)
+                            # add to our data set
+                            result.update({'life': life})
 
-        # return whatever we got, or an empty dict if all else fails
-        return result
+            return result
+
+        except Exception as e:
+            logger.error('Exception: {}'.format(e.args))
+            raise e
 
     def get_mute_status(self) -> bool:
-        """Return whether picture/audio mute is enabled."""
-        data = self.__cmd(self.Command.STATUS)
-        if data is not None:
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                mute_status = self.status['video_mute'][data[11]]
-                return mute_status
+        """Get whether picture/audio mute is enabled.
+
+        Returns
+        -------
+        bool
+            True is muted, False otherwise
+        """
+        try:
+            data = self.__cmd(self.Command.STATUS)
+            if data is not None:
+                if len(data) == 2:
+                    raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+                else:
+                    mute_status = self.status['video_mute'][data[11]]
+                    return mute_status
+        except Exception as e:
+            logger.error('Exception: {}'.format(e.args))
+            raise e
 
     @property
     def av_mute(self):
         return self.get_mute_status()
 
     def get_model(self) -> str:
-        """Return a string representing the model name or series"""
-        data = self.__cmd(self.Command.GET_MODEL)
-        if data is not None:
-            if len(data) == 2:
-                raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
-            else:
-                # data starts at 6th byte
-                model = data[5:37].decode('utf-8').rstrip('\x00')
-                return model
+        """Get model name or series
+
+        Returns
+        -------
+        str
+            str representing the model name or series
+        """
+        try:
+            data = self.__cmd(self.Command.GET_MODEL)
+            if data is not None:
+                if len(data) == 2:
+                    raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
+                else:
+                    # data starts at 6th byte
+                    model = data[5:37].decode('utf-8').rstrip('\x00')
+                    return model
+        except Exception as e:
+            logger.error('Exception: {}'.format(e.args))
+            raise e
 
     #
-    # Methods not shared with PJLink past here
+    # Methods just for debugging past here
     #
 
     def get_status(self) -> dict:
