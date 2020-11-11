@@ -1,13 +1,13 @@
 """The drivers.projector package contains drivers for various types and models of projectors.
 Each driver subclasses 'ProjectorInterface', defined here in this file (drivers/projector/__init__.py).
-The 'Projector' class is also defined here and represents the actual device itself, along
-with its interface, model data, and list of alternative drivers available for this device.
-The interface is intended to be as generic as possible, supporting the minimum functionality
-provided by most devices of this type.
+The 'Projector' class is also defined here and represents the actual device itself. Projector
+instance variables include its interface (ProjectorInterface), model number, and a list of
+alternative drivers compatible with this device, if any.  The interface is intended to be as
+generic as possible, supporting the minimum functionality provided by most devices of this type.
 
-The model-specific drivers are meant to be loaded dynamically by importlib, based on av system
+The model-specific drivers are meant to be loaded dynamically by importlib, based on AV system
 configuration details contained in a file or database.  The configuration data details
-what equipment is present, what driver it uses, how many inputs it has, what type, etc.
+what equipment is present, what driver it uses, what inputs it has, etc.
 
 This should hopefully allow us to define a generic web control interface that is able to adapt
 to many different equipment combinations
@@ -99,12 +99,11 @@ class ProjectorInterface(metaclass=abc.ABCMeta):
 
 class Projector:
     """A light wrapper encapsulating various data about a projector: its model,
-    its address (TCP/IP or serial tty), a reference to its current driver/interface,
-    and a list of other drivers it's compatible with if we need to reconnect to it
-    and do something with this projector that the current driver isn't capable of.
+    a reference to its current driver/interface, and a list of other drivers it's
+    compatible with if we need to reconnect to it and do something with this
+    projector that the current driver isn't capable of.
     """
     def __init__(self):
         self.interface = None
-        self.address = None
         self.drivers_available = []
         self.model = None
