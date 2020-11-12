@@ -5,9 +5,6 @@ import importlib
 import json
 import sys
 
-from drivers.projector import Projector
-
-
 if __name__ == "__main__":
     configs = ['rooms/BB0115.json', 'rooms/BB0205.json']
     rooms, pjs = [], []
@@ -18,7 +15,7 @@ if __name__ == "__main__":
             print(room)
 
     for room in rooms:
-        pj = Projector()
+        pj = None
         pj_sub_key = room['projector']
 
         # choose the appropriate driver
@@ -48,36 +45,27 @@ if __name__ == "__main__":
             # if a different port is specified in the config, use that
             # otherwise, the driver will use the default port
             if "ip_port" in pj_sub_key:
-                pj.interface = driver_class(
+                pj = driver_class(
                     ip_address=pj_sub_key['ip_address'],
-                    ip_port=pj_sub_key['ip_port'],
-                    pj=pj
+                    ip_port=pj_sub_key['ip_port']
                 )
             else:
-                pj.interface = driver_class(
-                    ip_address=pj_sub_key['ip_address'],
-                    pj=pj
+                pj = driver_class(
+                    ip_address=pj_sub_key['ip_address']
                 )
-            pj.address = pj_sub_key['ip_address']
         # at the moment, serial is only supported for the NEC projectors
         elif comm_method == "serial":
             assert("serial_device" in pj_sub_key), "serial connection requested but no serial_device specified!"
             baud_rate = 38400
             if "serial_baud_rate" in pj_sub_key:
                 baud_rate = pj_sub_key['serial_baud_rate']
-            pj.interface = driver_class(
+            pj = driver_class(
                 comm_method="serial",
                 serial_device=pj_sub_key['serial_device'],
-                serial_baud_rate=baud_rate,
-                pj=pj
+                serial_baud_rate=baud_rate
             )
-            pj.address = pj_sub_key['serial_device']
 
-        # store a list of alternative drivers we can use besides our first choice
-        if "drivers" in pj_sub_key:
-            pj.drivers_available = pj_sub_key['drivers']
-
-        if pj.interface is None:
+        if pj is None:
             sys.exit("Failed to instantiate projector control interface")
 
         # if the model is specified we'll set that here...
@@ -85,16 +73,10 @@ if __name__ == "__main__":
             pj.model = pj_sub_key['model']
         # otherwise, we can query the projector itself for the model/series name
         else:
-            pj.model = pj.interface.get_model()
+            pj.model = pj.get_model()
 
         # get the lamp count, for projector drivers like our NEC that don't report this
         if "lamps" in pj_sub_key:
-            pj.interface.lamp_count = pj_sub_key['lamps']
-
-        # get available inputs
-        if "inputs" in pj_sub_key:
-            for inp in pj_sub_key['inputs']:
-                # find the matching input listed in the driver module & add to the set of available inputs
-                pj.interface.inputs_available.add(pj.interface.Input[inp])
+            pj.lamp_count = pj_sub_key['lamps']
 
         pjs.append(pj)

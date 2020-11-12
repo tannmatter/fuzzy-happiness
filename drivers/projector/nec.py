@@ -306,7 +306,7 @@ class NEC(ProjectorInterface):
     }
 
     def __init__(self, ip_address=None, *, port=7142, comm_method='tcp', serial_device=None,
-                 serial_baudrate=38400, serial_timeout=0.1, inputs: dict = None, pj=None):
+                 serial_baudrate=38400, serial_timeout=0.1, inputs: dict = None):
         """Create an NEC projector driver instance and initialize a connection to the
         projector over either serial (RS-232) or TCP. Default to TCP 7142.  After
         ip_address, all arguments should be keyword arguments.
@@ -327,7 +327,6 @@ class NEC(ProjectorInterface):
         :param drivers.projector.Projector pj: Reference back to the Projector object
             using this ProjectorInterface instance.
         """
-        self.projector = pj
         self.comms = self.Comms()
 
         try:

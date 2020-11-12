@@ -1,46 +1,48 @@
+import enum
 import logging
 import sys
 
 from serial import Serial
 
 from drivers.tv import TVInterface
+from utils import merge_dicts
 RECVBUF = 2048
 
 logger = logging.getLogger('SamsungExLink')
 logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-# set this to debug if i start misbehaving`
-ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
-fh = logging.FileHandler('avc.log')
-# set this to debug if i start misbehaving
-fh.setLevel(logging.INFO)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.ERROR)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+file_handler = logging.FileHandler('avc.log')
+file_handler.setLevel(logging.WARNING)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 
 class SamsungExLink(TVInterface):
-    class Input(TVInterface.Input):
-        TV = b'\x00\x00'
-        VIDEO_1 = b'\x01\x00'
-        VIDEO_2 = b'\x01\x01'
-        VIDEO_3 = b'\x01\x02'
-        SVIDEO_1 = b'\x02\x00'
-        SVIDEO_2 = b'\x02\x01'
-        SVIDEO_3 = b'\x02\x02'
-        COMPONENT_1 = b'\x03\x00'
-        COMPONENT_2 = b'\x03\x01'
-        COMPONENT_3 = b'\x03\x02'
-        RGB_1 = b'\x04\x00'
-        RGB_2 = b'\x04\x01'
-        RGB_3 = b'\x04\x02'
-        HDMI_1 = b'\x05\x00'
-        HDMI_2 = b'\x05\x01'
-        HDMI_3 = b'\x05\x02'
-        HDMI_4 = b'\x05\x03'
+    _default_inputs = {
+        "TV": b'\x00\x00',
+        "VIDEO_1": b'\x01\x00',
+        "VIDEO_2": b'\x01\x01',
+        "VIDEO_3": b'\x01\x02',
+        "SVIDEO_1": b'\x02\x00',
+        "SVIDEO_2": b'\x02\x01',
+        "SVIDEO_3": b'\x02\x02',
+        "COMPONENT_1": b'\x03\x00',
+        "COMPONENT_2": b'\x03\x01',
+        "COMPONENT_3": b'\x03\x02',
+        "RGB_1": b'\x04\x00',
+        "RGB_2": b'\x04\x01',
+        "RGB_3": b'\x04\x02',
+        "HDMI_1": b'\x05\x00',
+        "HDMI_2": b'\x05\x01',
+        "HDMI_3": b'\x05\x02',
+        "HDMI_4": b'\x05\x03'
+    }
 
     class Command(TVInterface.Command):
         # all commands are checksummed
@@ -85,23 +87,34 @@ class SamsungExLink(TVInterface):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
 
-    def __init__(self, device='/dev/ttyUSB0', baudrate=9600, timeout=0.1, tv=None):
+    def __init__(self, device='/dev/ttyUSB0', baudrate=9600, timeout=0.1, inputs: dict = None):
         try:
-            self.tv = tv
             self.comms = self.Comms()
             self.comms.device = device
             self.comms.baudrate = baudrate
             self.comms.timeout = timeout
-            logger.debug('__init__(): Establishing RS-232 connection on device %s @ %d',
-                         device, baudrate)
             self.comms.connection = Serial(port=device, baudrate=baudrate, timeout=timeout)
-            logger.debug('__init__(): Connection established')
-            self.comms.connection.close()
-            logger.debug('__init__(): Connection closed')
 
-        except Exception as inst:
-            print(inst)
+            # Take a dictionary of custom input labels & values...
+            if inputs and isinstance(inputs, dict):
+                # ...and merge it with the default inputs, creating an Enum to hold them...
+                self.inputs = enum.Enum(
+                    value="Input", names=merge_dicts(inputs, self._default_inputs),
+                    module=__name__, qualname="drivers.tv.samsungexlink.SamsungExLink.Input"
+                )
+            # ...or just use the defaults provided by the driver for testing
+            else:
+                self.inputs = enum.Enum(
+                    value="Input", names=self._default_inputs,
+                    module=__name__, qualname="drivers.tv.samsungexlink.SamsungExLink.Input"
+                )
+
+        except Exception as e:
+            logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
             sys.exit(1)
+
+        finally:
+            self.comms.connection.close()
 
     @staticmethod
     def __checksum(_bytes: bytes) -> bytes:
@@ -120,25 +133,25 @@ class SamsungExLink(TVInterface):
     def __cmd(self, cmd: Command, param: bytes = None):
         """If a parameter is provided, it is appended to the command (passed in cmd)
         and the result is checksummed and sent to the TV."""
-        cmd_bytes = cmd.value
-        if param:
-            cmd_bytes = cmd_bytes + param
+        try:
+            cmd_bytes = cmd.value
+            if param:
+                cmd_bytes = cmd_bytes + param
 
-        cmd_bytes = cmd_bytes + self.__checksum(cmd_bytes)
-        if isinstance(self.comms.connection, Serial):
-            try:
+            cmd_bytes = cmd_bytes + self.__checksum(cmd_bytes)
+            if isinstance(self.comms.connection, Serial):
                 self.comms.connection.open()
                 self.comms.send(cmd_bytes)
-                # Samsung is not very forthcoming about ExLink so we don't know how to parse any of this junk data
-                # let's log it anyway
                 res = self.comms.recv(RECVBUF)
+                # Samsung is not very forthcoming about ExLink so we don't know how to parse any of this junk data
+                # Let's log it if we're debugging
                 logger.debug('__cmd(): result - %s', str(res))
-            except Exception as inst:
-                print(inst)
-                sys.exit(1)
-            finally:
-                # always close after our business is done
-                self.comms.connection.close()
+        except Exception as e:
+            logger.error('__cmd(): Exception occurred: {}'.format(e.args))
+            raise e
+        finally:
+            # always close after our business is done
+            self.comms.connection.close()
 
     def power_on(self):
         self.__cmd(self.Command.POWER_ON)
@@ -149,14 +162,25 @@ class SamsungExLink(TVInterface):
     def power_toggle(self):
         self.__cmd(self.Command.POWER_TOGGLE)
 
-    def select_input(self, input_: Input = Input.HDMI_1):
-        # The Samsung in my office seems to not mind us trying to select inputs it doesn't have
-        # (ex. HDMI 4 on a TV with only 3 HDMI inputs) as it just says "Not available" on the screen
-        # and goes back to the last valid input selected.  This effectively means there's nothing to parse.
-        if isinstance(input_, self.Input):
-            self.__cmd(self.Command.SELECT_INPUT, input_.value)
+    def select_input(self, input_: str):
+        """Switch the TV's input
+
+        :param str input_: Name of the input to select
+        :return: None
+        """
+        # The Samsung in my office seems to not mind me trying to select inputs it doesn't have.
+        # (ex. HDMI 4 on a TV with only 3 HDMI inputs). It just says "Not available" on the screen
+        # and goes back to the last valid input selected.
+        try:
+            input_enum_val = self.inputs[input_].value
+        except KeyError as ke:
+            logger.error("select_input(): bad input '{}'".format(input_))
+            raise ke
+        # any other exception has already been logged.  just send it upward
+        except Exception as e:
+            raise e
         else:
-            logger.error('select_input(): invalid value')
+            self.__cmd(self.Command.SELECT_INPUT, input_enum_val)
 
     def mute_toggle(self):
         self.__cmd(self.Command.KEY_MUTE)

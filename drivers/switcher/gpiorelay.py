@@ -7,16 +7,17 @@ from drivers.switcher import SwitcherInterface
 
 logger = logging.getLogger('GPIORelay')
 logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
-fh = logging.FileHandler('avc.log')
-fh.setLevel(logging.INFO)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.ERROR)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+file_handler = logging.FileHandler('avc.log')
+file_handler.setLevel(logging.WARNING)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 
 class GPIORelay(SwitcherInterface):
@@ -34,7 +35,7 @@ class GPIORelay(SwitcherInterface):
         4: 5
     }
 
-    def __init__(self, low_active=True, num_inputs=2, inputs=None, default_input=None, sw=None):
+    def __init__(self, low_active=True, num_inputs=2, inputs=None, default_input=None):
         if low_active:
             self.R_ON = GPIO.LOW
             self.R_OFF = GPIO.HIGH
@@ -58,7 +59,6 @@ class GPIORelay(SwitcherInterface):
         self._selected_input = None
         if default_input:
             self.select_input(default_input)
-        self.switcher = sw
 
     def select_input(self, input_):
         if input_ not in self.inputs or input_ > self.num_inputs:

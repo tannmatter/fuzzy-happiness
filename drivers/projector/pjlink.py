@@ -128,7 +128,7 @@ class PJLink(ProjectorInterface):
         3: 'All muted'
     }
 
-    def __init__(self, ip_address=None, ip_port=4352, inputs: dict = None, pj=None):
+    def __init__(self, ip_address=None, ip_port=4352, inputs: dict = None):
         """Create a PJLink projector driver instance and initialize a connection to the
         projector over TCP (default port 4352).
 
@@ -138,7 +138,6 @@ class PJLink(ProjectorInterface):
         :param drivers.projector.Projector pj: Reference back to the Projector object
             using this ProjectorInterface instance.
         """
-        self.projector = pj
         self.comms = self.Comms()
         try:
             if ip_address is not None:

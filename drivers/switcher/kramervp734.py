@@ -1,3 +1,4 @@
+import enum
 import logging
 import select
 from socket import socket, create_connection
@@ -7,22 +8,22 @@ from time import sleep
 from serial import Serial
 
 from drivers.switcher import SwitcherInterface
-RECVBUF = 2048
+from utils import merge_dicts
+BUFF_SIZE = 2048
 
 logger = logging.getLogger('KramerVP734')
 logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-# set this to debug if i start misbehaving`
-ch.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
-fh = logging.FileHandler('avc.log')
-# set this to debug if i start misbehaving
-fh.setLevel(logging.INFO)
-fh.setFormatter(formatter)
-logger.addHandler(fh)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.ERROR)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+file_handler = logging.FileHandler('avc.log')
+file_handler.setLevel(logging.WARNING)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 
 class KramerVP734(SwitcherInterface):
@@ -35,13 +36,23 @@ class KramerVP734(SwitcherInterface):
         DIGITAL_4 = 5
         DP_1 = 6
 
+    _default_inputs = {
+        "RGB_1": 0,
+        "RGB_2": 1,
+        "HDMI_1": 2,
+        "HDMI_2": 3,
+        "HDMI_3": 4,
+        "HDMI_4": 5,
+        "DISPLAYPORT": 6
+    }
+
     class Comms(SwitcherInterface.Comms):
         def __init__(self):
             self.connection = None
             self.serial_device = None
-            self.serial_baud_rate = None
+            self.serial_baudrate = None
             self.serial_timeout = None
-            self.tcp_ip = None
+            self.tcp_ip_address = None
             self.tcp_port = None
             self.tcp_timeout = None
 
@@ -51,7 +62,7 @@ class KramerVP734(SwitcherInterface):
             elif isinstance(self.connection, socket):
                 return self.connection.send(data)
 
-        def recv(self, size=RECVBUF):
+        def recv(self, size=BUFF_SIZE):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
             elif isinstance(self.connection, socket):
@@ -61,20 +72,23 @@ class KramerVP734(SwitcherInterface):
             if isinstance(self.connection, Serial):
                 self.connection.reset_input_buffer()
             elif isinstance(self.connection, socket):
-
                 in_socks = [self.connection]
-                out_socks, err_socks = [], []
-                while True:
-                    ins_available, outs_available, errs_available = select.select(
-                        in_socks,
-                        out_socks,
-                        err_socks,
-                        self.tcp_timeout
-                    )
-                    if len(ins_available) == 0:
-                        break
-                    else:
-                        junk = ins_available[0].recv(RECVBUF)
+
+                # select called with a timeout of 0, so it polls instead of blocking
+                ins_available, _, _ = select.select(
+                    in_socks, [], [], 0
+                )
+                junk_buffer = b''
+                # there is data available to read
+                if self.connection in ins_available:
+                    data_available = True
+                    while data_available:
+                        try:
+                            junk_buffer += self.connection.recv(BUFF_SIZE)
+                            sleep(0.05)
+                            logger.debug('junk_buffer: {}'.format(junk_buffer.decode()))
+                        except BlockingIOError as e:
+                            data_available = False
 
     # all of this (functions, data) is for debugging, mostly
     functions = {
@@ -339,65 +353,65 @@ class KramerVP734(SwitcherInterface):
         }
     }
 
-    def __init__(self, serial_device='/dev/ttyUSB0', serial_baud_rate=115200, serial_timeout=0.5, comm_method='serial',
-                 tcp_ip=None, tcp_port=5000, tcp_timeout=2.0, sw=None):
+    def __init__(self, serial_device='/dev/ttyUSB0', serial_baudrate=115200, serial_timeout=0.5, comm_method='serial',
+                 ip_address=None, ip_port=5000, tcp_timeout=2.0, inputs: dict = None):
         try:
-            self.switcher = sw
-
             self._power_status = None
             self._input_status = None
             self._av_mute = None
 
             if comm_method == 'serial':
-                logger.debug('__init__(): Establishing RS-232 connection on device %s @ %d',
-                             serial_device, serial_baud_rate)
                 self.comms = self.Comms()
                 self.comms.serial_device = serial_device
-                self.comms.serial_baud_rate = serial_baud_rate
+                self.comms.serial_baudrate = serial_baudrate
                 self.comms.serial_timeout = serial_timeout
-                self.comms.connection = Serial(port=serial_device, baudrate=serial_baud_rate, timeout=serial_timeout)
-                logger.debug('__init__(): Connection established')
-                self.comms.connection.close()
-                logger.debug('__init__(): Connection closed')
+                self.comms.connection = Serial(port=serial_device, baudrate=serial_baudrate, timeout=serial_timeout)
 
-            elif comm_method == 'tcp' and tcp_ip is not None:
-                logger.debug('__init__(): Establishing TCP connection to %s:%d', tcp_ip, tcp_port)
+            elif comm_method == 'tcp' and ip_address is not None:
                 self.comms = self.Comms()
-                self.comms.tcp_ip = tcp_ip
-                self.comms.tcp_port = tcp_port
+                self.comms.tcp_ip_address = ip_address
+                self.comms.tcp_port = ip_port
                 self.comms.tcp_timeout = tcp_timeout
-                self.comms.connection = create_connection((tcp_ip, tcp_port),
-                    timeout=tcp_timeout
-                )
-                logger.debug('__init__(): Connection established')
-                self.comms.connection.close()
-                logger.debug('__init__(): Connection closed')
+                self.comms.connection = create_connection((ip_address, ip_port), timeout=tcp_timeout)
 
-        except Exception as inst:
-            print(inst)
+            # Take a dictionary of custom input labels & values...
+            if inputs and isinstance(inputs, dict):
+                # ...and merge it with the default inputs, creating an Enum to hold them...
+                self.inputs = enum.Enum(
+                    value="Input", names=merge_dicts(inputs, self._default_inputs),
+                    module=__name__, qualname="drivers.switcher.kramervp734.KramerVP734.Input"
+                )
+            # ...or just use the defaults provided by the driver for testing
+            else:
+                self.inputs = enum.Enum(
+                    value="Input", names=self._default_inputs,
+                    module=__name__, qualname="drivers.switcher.kramervp734.KramerVP734.Input"
+                )
+
+        except Exception as e:
+            logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
             sys.exit(1)
+        finally:
+            self.comms.connection.close()
 
     def open_connection(self):
         if isinstance(self.comms.connection, Serial):
             self.comms.connection.open()
         elif isinstance(self.comms.connection, socket):
             self.comms.connection = create_connection(
-                (self.comms.tcp_ip, self.comms.tcp_port),
+                (self.comms.tcp_ip_address, self.comms.tcp_port),
                 timeout=self.comms.tcp_timeout
             )
-        logger.debug('Connection opened')
 
     def close_connection(self):
         self.comms.connection.close()
-        logger.debug('Connection closed')
 
     def read_response(self):
         """Read all responses and pass the ones we're interested in to the parser.
         """
-        logger.debug('read_response() called')
         data = self.comms.recv()
 
-        logger.debug('read_response() gets: %s', data)
+        logger.debug('read_response() gets: {}'.format(data))
 
         data_parts = data.split(b'\r\n>')
 
@@ -478,7 +492,7 @@ class KramerVP734(SwitcherInterface):
                 elif func in self.data and param in self.data[func]:
                     logger.debug('parse() says: %s', self.functions[func].format(self.data[func][param]))
 
-                    # this is where the magic should happen for tracking our state
+                    # this is where the magic happens for tracking our switcher's state
                     # video mute set/get
                     if func == 8:
                         self._av_mute = bool(param)
@@ -488,7 +502,7 @@ class KramerVP734(SwitcherInterface):
                         self._power_status = bool(param)
                     # input set/get
                     elif func == 30:
-                        self._input_status = self.Input(param)
+                        self._input_status = self.inputs(param)
 
                     return
                 # otherwise, just log the formatted str for the function with the
@@ -516,84 +530,115 @@ class KramerVP734(SwitcherInterface):
             logger.debug('parse() says: Unimplemented/unknown function %s', data)
             return
 
-    def power_on(self) -> None:
-        logger.debug('power_on() called')
-        self.open_connection()
-        cmd = b'Y 0 10 1\r'
-        logger.debug('sending: %s', cmd)
-        self.comms.send(cmd)
-        sleep(1.0)
-        self.read_response()
-        self.close_connection()
-
-    def power_off(self) -> None:
-        logger.debug('power_off() called')
-        self.open_connection()
-        cmd = b'Y 0 10 0\r'
-        logger.debug('sending: %s', cmd)
-        self.comms.send(cmd)
-        sleep(1.0)
-        self.read_response()
-        self.close_connection()
-
-    def select_input(self, input_=Input.DIGITAL_1) -> Input:
-        logger.debug('select_input(%s) called', input_)
-        if isinstance(input_, self.Input):
+    def power_on(self):
+        try:
+            logger.debug('power_on() called')
             self.open_connection()
-            cmd = b'Y 0 30 ' + bytes(str(input_.value), 'ascii') + b'\r'
-            logger.debug('sending: %s', cmd)
+            cmd = b'Y 0 10 1\r'
+            logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
             sleep(1.0)
             self.read_response()
+        except Exception as e:
+            logger.error('power_on(): Exception occurred: {}'.format(e.args), exc_info=True)
+            raise e
+        finally:
             self.close_connection()
-            return self._input_status
 
-    # Each of these 'properties' gets evaluated (executed) by Pycharm every time you type
-    # the dot after 'some_switcher_object.interface'.  It's _really_ annoying and I've heard
-    # others say the same.  So any further testing on any class with properties (so, all of them)
-    # should ideally be done outside of Pycharm. For now, I'm just taking out the @property
+    def power_off(self):
+        try:
+            logger.debug('power_off() called')
+            self.open_connection()
+            cmd = b'Y 0 10 0\r'
+            logger.debug('sending: {}'.format(cmd))
+            self.comms.send(cmd)
+            sleep(1.0)
+            self.read_response()
+        except Exception as e:
+            logger.error('power_on(): Exception occurred: {}'.format(e.args), exc_info=True)
+            raise e
+        finally:
+            self.close_connection()
 
-    def get_power_status(self) -> bool:
-        logger.debug('power_status property called')
-        self.open_connection()
-        cmd = b'Y 1 10\r'
-        logger.debug('sending: %s', cmd)
-        self.comms.send(cmd)
-        sleep(1.0)
-        self.read_response()
-        self.close_connection()
-        return self._power_status
+    def select_input(self, input_: str):
+        logger.debug('select_input({}) called'.format(input_))
+        try:
+            if input_ in self.inputs:
+                self.open_connection()
+                input_enum_val = self.inputs[input_].value
+                cmd = b'Y 0 30 ' + bytes(str(input_enum_val), 'ascii') + b'\r'
+                logger.debug('sending: {}'.format(cmd))
+                self.comms.send(cmd)
+                sleep(1.0)
+                self.read_response()
+                return self._input_status
+            else:
+                raise KeyError
+        except KeyError as ke:
+            logger.error('select_input(): bad input {}'.format(input_))
+            raise ke
+        except Exception as e:
+            logger.error('select_input(): Exception occurred: {}'.format(e.args), exc_info=True)
+            raise e
+        finally:
+            self.close_connection()
 
-    # @property
-    def power_status(self) -> bool:
+    def get_power_status(self):
+        try:
+            logger.debug('power_status property called')
+            self.open_connection()
+            cmd = b'Y 1 10\r'
+            logger.debug('sending: {}'.format(cmd))
+            self.comms.send(cmd)
+            sleep(1.0)
+            self.read_response()
+            return self._power_status
+        except Exception as e:
+            logger.error('power_on(): Exception occurred: {}'.format(e.args), exc_info=True)
+            raise e
+        finally:
+            self.close_connection()
+
+    @property
+    def power_status(self):
         return self.get_power_status()
 
-    def get_input_status(self) -> Input:
-        logger.debug('input_status property called')
-        self.open_connection()
-        cmd = b'Y 1 30\r'
-        logger.debug('sending: %s', cmd)
-        self.comms.send(cmd)
-        sleep(1.0)
-        self.read_response()
-        self.close_connection()
-        return self._input_status
+    def get_input_status(self):
+        try:
+            logger.debug('input_status property called')
+            self.open_connection()
+            cmd = b'Y 1 30\r'
+            logger.debug('sending: {}'.format(cmd))
+            self.comms.send(cmd)
+            sleep(1.0)
+            self.read_response()
+            return self._input_status
+        except Exception as e:
+            logger.error('power_on(): Exception occurred: {}'.format(e.args), exc_info=True)
+            raise e
+        finally:
+            self.close_connection()
 
-    # @property
-    def input_status(self) -> Input:
+    @property
+    def input_status(self):
         return self.get_input_status()
 
-    def get_av_mute(self) -> bool:
-        logger.debug('av_mute property called')
-        self.open_connection()
-        cmd = b'Y 1 8\r'
-        logger.debug('sending: %s', cmd)
-        self.comms.send(cmd)
-        sleep(1.0)
-        self.read_response()
-        self.close_connection()
-        return self._av_mute
+    def get_av_mute(self):
+        try:
+            logger.debug('av_mute property called')
+            self.open_connection()
+            cmd = b'Y 1 8\r'
+            logger.debug('sending: {}'.format(cmd))
+            self.comms.send(cmd)
+            sleep(1.0)
+            self.read_response()
+            return self._av_mute
+        except Exception as e:
+            logger.error('power_on(): Exception occurred: {}'.format(e.args), exc_info=True)
+            raise e
+        finally:
+            self.close_connection()
 
-    # @property
-    def av_mute(self) -> bool:
+    @property
+    def av_mute(self):
         return self.get_av_mute()

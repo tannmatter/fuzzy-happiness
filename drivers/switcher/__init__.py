@@ -16,7 +16,7 @@ to many different equipment combinations
 import abc
 from enum import Enum
 
-__all__ = ["Switcher", "SwitcherInterface"]
+__all__ = ["SwitcherInterface"]
 
 
 class SwitcherInterface(metaclass=abc.ABCMeta):
@@ -78,15 +78,3 @@ class SwitcherInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def av_mute(self) -> bool:
         raise NotImplementedError
-
-
-class Switcher:
-    """A light wrapper encapsulating various data about a switcher: its model,
-    a reference to its current driver/interface, and a list of other drivers it's
-    compatible with if we need to reconnect to it and do something with this
-    switcher that the current driver isn't capable of.
-    """
-    def __init__(self):
-        self.interface = None
-        self.drivers_available = []
-        self.model = None

@@ -16,7 +16,7 @@ to many different equipment combinations
 import abc
 from enum import Enum
 
-__all__ = ["TV", "TVInterface"]
+__all__ = ["TVInterface"]
 
 
 class TVInterface(metaclass=abc.ABCMeta):
@@ -65,15 +65,3 @@ class TVInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def select_input(self, input_: Input):
         raise NotImplementedError
-
-
-class TV:
-    """A light wrapper encapsulating various data about a TV: its model,
-    a reference to its current driver/interface, and a list of other drivers it's
-    compatible with if we need to reconnect to it and do something with this
-    TV that the current driver isn't capable of.
-    """
-    def __init__(self):
-        self.interface = None
-        self.drivers_available = []
-        self.model = None
