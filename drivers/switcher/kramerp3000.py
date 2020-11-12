@@ -71,12 +71,12 @@ logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.ERROR)
+console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 file_handler = logging.FileHandler('avc.log')
-file_handler.setLevel(logging.WARNING)
+file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
@@ -307,7 +307,9 @@ class KramerP3000(SwitcherInterface):
 
         # Return which error, if any, was received, or True and the response itself otherwise
         # (These are not the only errors possible, just the only ones we're going to worry about here)
-        if re.search(self.Error.CMD_UNAVAILABLE.value, response):
+        if not response:
+            raise IOError('select_input(): Communication error: empty response')
+        elif re.search(self.Error.CMD_UNAVAILABLE.value, response):
             return self.Error.CMD_UNAVAILABLE, response
         elif re.search(self.Error.PARAM_OUT_OF_RANGE.value, response):
             return self.Error.PARAM_OUT_OF_RANGE, response
@@ -329,8 +331,8 @@ class KramerP3000(SwitcherInterface):
         :returns: The input selected if no errors are reported
         """
         try:
-            inp = self.inputs[input_]
-            outp = self.outputs[output]
+            inp = self.inputs[input_].value
+            outp = self.outputs[output].value
 
             try_in_order = [
                 '#ROUTE 1,{},{}\r'.format(outp, inp),
@@ -343,6 +345,7 @@ class KramerP3000(SwitcherInterface):
 
             for cmd in try_in_order:
                 result, response = self._try_cmd(cmd.encode())
+                logger.debug("select_input(): response: '{}'".format(response))
                 if result == self.Error.CMD_UNAVAILABLE:
                     # try the next one
                     continue
@@ -397,6 +400,7 @@ class KramerP3000(SwitcherInterface):
 
             for cmd in try_in_order:
                 result, response = self._try_cmd(cmd)
+                logger.debug("input_status(): response: '{}'".format(response))
                 if result == self.Error.CMD_UNAVAILABLE:
                     # try the next command
                     continue
@@ -439,6 +443,8 @@ class KramerP3000(SwitcherInterface):
                                     input_ = self.inputs(input_match.group(1).decode())
                                     inputs.append(input_)
                             return inputs
+                    else:
+                        raise IOError('input_status(): Communication error')
                 else:
                     # 'ERR' contained in response but not one we know about.
                     raise Exception('input_status: An unknown error was reported by the switcher: {}'.
