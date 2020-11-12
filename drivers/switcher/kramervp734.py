@@ -555,7 +555,7 @@ class KramerVP734(SwitcherInterface):
     def select_input(self, input_: str):
         logger.debug('select_input({}) called'.format(input_))
         try:
-            if input_ in self.inputs:
+            if input_ in self.inputs.__members__:
                 self.open_connection()
                 input_enum_val = self.inputs[input_].value
                 cmd = b'Y 0 30 ' + bytes(str(input_enum_val), 'ascii') + b'\r'
