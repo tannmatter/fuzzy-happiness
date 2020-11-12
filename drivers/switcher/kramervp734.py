@@ -27,14 +27,6 @@ logger.addHandler(file_handler)
 
 
 class KramerVP734(SwitcherInterface):
-    class Input(SwitcherInterface.Input):
-        RGB_1 = 0
-        RGB_2 = 1
-        DIGITAL_1 = 2
-        DIGITAL_2 = 3
-        DIGITAL_3 = 4
-        DIGITAL_4 = 5
-        DP_1 = 6
 
     _default_inputs = {
         "RGB_1": 0,
