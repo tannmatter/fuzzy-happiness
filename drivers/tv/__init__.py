@@ -1,9 +1,7 @@
 """The drivers.tv package contains drivers for various types and models of TV.
 Each driver subclasses 'TVInterface', defined here in this file (drivers/tv/__init__.py).
-The 'TV' class is also defined here and represents the actual device itself. TV
-instance variables include its interface (TVInterface), model number, and list of
-alternative drivers compatible with this device, if any.  The interface is intended to be as
-generic as possible, supporting the minimum functionality provided by most devices of this type.
+The interface is intended to be as generic as possible, supporting the minimum functionality
+provided by most devices of this type.
 
 The model-specific drivers are meant to be loaded dynamically by importlib, based on av system
 configuration details contained in a file or database.  The configuration data details
