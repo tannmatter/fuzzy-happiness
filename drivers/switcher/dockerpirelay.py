@@ -39,12 +39,10 @@ class DockerPiRelay(SwitcherInterface):
             self.press = press
 
             if inputs and isinstance(inputs, dict):
-                # ...and merge it with the default inputs, creating an Enum to hold them...
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
                     module=__name__, qualname="drivers.projector.dockerpirelay.DockerPiRelay.Input"
                 )
-            # ...or just use the defaults provided by the driver for testing
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,
@@ -58,7 +56,7 @@ class DockerPiRelay(SwitcherInterface):
         try:
             input_enum = self.inputs[input_]
             val = input_enum.value
-            logger.debug("selecting input '{}'".format(self.inputs[input_]))
+            logger.debug("selecting input :'{}'".format(self.inputs[input_]))
             self._bus.write_byte_data(self._DEVICE_ADDR, val, 0xFF)
             time.sleep(self.press)
             self._bus.write_byte_data(self._DEVICE_ADDR, val, 0x00)
