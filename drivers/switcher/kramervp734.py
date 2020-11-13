@@ -589,9 +589,9 @@ class KramerVP734(SwitcherInterface):
                 cmd = b'Y 0 30 ' + bytes(str(input_enum_val), 'ascii') + b'\r'
                 logger.debug('sending: {}'.format(cmd))
                 self.comms.send(cmd)
-                sleep(1.0)
+                # sleep(1.0)
                 self.read_response()
-                return self._input_status
+                return self.input_status
             else:
                 raise KeyError
         except KeyError as ke:
