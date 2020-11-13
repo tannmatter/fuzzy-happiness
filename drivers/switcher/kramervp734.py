@@ -16,7 +16,7 @@ logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.ERROR)
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
@@ -58,7 +58,6 @@ class KramerVP734(SwitcherInterface):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
             elif isinstance(self.connection, socket):
-                # to switch back to blocking socket: uncomment this
                 return self.connection.recv(size)
 
         def reset_input_buffer(self):
