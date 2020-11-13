@@ -347,7 +347,7 @@ class KramerVP734(SwitcherInterface):
     }
 
     def __init__(self, serial_device='/dev/ttyUSB0', serial_baudrate=115200, serial_timeout=0.5, comm_method='serial',
-                 ip_address=None, ip_port=5000, tcp_timeout=1.0, inputs: dict = None):
+                 ip_address=None, ip_port=5000, tcp_timeout=2.0, inputs: dict = None):
         try:
             self._power_status = None
             self._input_status = None
@@ -569,7 +569,7 @@ class KramerVP734(SwitcherInterface):
                 self.comms.send(cmd)
                 # sleep(1.0)
                 self.read_response()
-                return self.input_status
+                return self._input_status
             else:
                 raise KeyError
         except KeyError as ke:
