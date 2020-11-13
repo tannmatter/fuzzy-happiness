@@ -59,26 +59,7 @@ class KramerVP734(SwitcherInterface):
                 return self.connection.read(size)
             elif isinstance(self.connection, socket):
                 # to switch back to blocking socket: uncomment this
-                # return self.connection.recv(size)
-
-                in_socks = [self.connection]
-
-                # select called here without a timeout, so recv() blocks until there is input available
-                inputs_available, _, _ = select.select(
-                    in_socks, [], []
-                )
-                buffer = b''
-                # there is data available to read
-                if self.connection in inputs_available:
-                    data_available = True
-                    while data_available:
-                        try:
-                            buffer += self.connection.recv(BUFF_SIZE)
-                            sleep(delay)
-                        except BlockingIOError as e:
-                            # break the loop
-                            data_available = False
-                return buffer
+                return self.connection.recv(size)
 
         def reset_input_buffer(self):
             if isinstance(self.connection, Serial):
@@ -366,7 +347,7 @@ class KramerVP734(SwitcherInterface):
     }
 
     def __init__(self, serial_device='/dev/ttyUSB0', serial_baudrate=115200, serial_timeout=0.5, comm_method='serial',
-                 ip_address=None, ip_port=5000, tcp_timeout=None, inputs: dict = None):
+                 ip_address=None, ip_port=5000, tcp_timeout=1.0, inputs: dict = None):
         try:
             self._power_status = None
             self._input_status = None
@@ -551,7 +532,6 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('power_on() called')
             self.open_connection()
-            self.comms.reset_input_buffer()
             cmd = b'Y 0 10 1\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
@@ -567,7 +547,6 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('power_off() called')
             self.open_connection()
-            self.comms.reset_input_buffer()
             cmd = b'Y 0 10 0\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
@@ -584,7 +563,6 @@ class KramerVP734(SwitcherInterface):
         try:
             if input_ in self.inputs.__members__:
                 self.open_connection()
-                self.comms.reset_input_buffer()
                 input_enum_val = self.inputs[input_].value
                 cmd = b'Y 0 30 ' + bytes(str(input_enum_val), 'ascii') + b'\r'
                 logger.debug('sending: {}'.format(cmd))
@@ -607,7 +585,6 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('power_status property called')
             self.open_connection()
-            self.comms.reset_input_buffer()
             cmd = b'Y 1 10\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
@@ -628,7 +605,6 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('input_status property called')
             self.open_connection()
-            self.comms.reset_input_buffer()
             cmd = b'Y 1 30\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
@@ -649,7 +625,6 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('av_mute property called')
             self.open_connection()
-            self.comms.reset_input_buffer()
             cmd = b'Y 1 8\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
