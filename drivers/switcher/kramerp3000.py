@@ -144,7 +144,7 @@ class KramerP3000(SwitcherInterface):
 
                 # select called here without a timeout, so recv() blocks until there is input available
                 inputs_available, _, _ = select.select(
-                    in_socks, [], []
+                    in_socks, [], [], 0
                 )
                 buffer = b''
                 # there is data available to read
@@ -308,7 +308,7 @@ class KramerP3000(SwitcherInterface):
         # Return which error, if any, was received, or True and the response itself otherwise
         # (These are not the only errors possible, just the only ones we're going to worry about here)
         if not response:
-            raise IOError('select_input(): Communication error: empty response')
+            raise IOError('_try_cmd(): Communication error: empty response')
         elif re.search(self.Error.CMD_UNAVAILABLE.value, response):
             return self.Error.CMD_UNAVAILABLE, response
         elif re.search(self.Error.PARAM_OUT_OF_RANGE.value, response):
