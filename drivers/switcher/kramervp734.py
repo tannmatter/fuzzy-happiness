@@ -554,7 +554,7 @@ class KramerVP734(SwitcherInterface):
             cmd = b'Y 0 10 1\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
-            sleep(1.0)
+            # sleep(1.0)
             self.read_response()
         except Exception as e:
             logger.error('power_on(): Exception occurred: {}'.format(e.args), exc_info=True)
@@ -569,7 +569,7 @@ class KramerVP734(SwitcherInterface):
             cmd = b'Y 0 10 0\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
-            sleep(1.0)
+            # sleep(1.0)
             self.read_response()
         except Exception as e:
             logger.error('power_on(): Exception occurred: {}'.format(e.args), exc_info=True)
@@ -586,7 +586,7 @@ class KramerVP734(SwitcherInterface):
                 cmd = b'Y 0 30 ' + bytes(str(input_enum_val), 'ascii') + b'\r'
                 logger.debug('sending: {}'.format(cmd))
                 self.comms.send(cmd)
-                sleep(1.0)
+                # sleep(1.0)
                 self.read_response()
                 return self._input_status
             else:
@@ -607,7 +607,7 @@ class KramerVP734(SwitcherInterface):
             cmd = b'Y 1 10\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
-            sleep(1.0)
+            # sleep(1.0)
             self.read_response()
             return self._power_status
         except Exception as e:
@@ -627,7 +627,7 @@ class KramerVP734(SwitcherInterface):
             cmd = b'Y 1 30\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
-            sleep(1.0)
+            # sleep(1.0)
             self.read_response()
             return self._input_status
         except Exception as e:
@@ -647,7 +647,7 @@ class KramerVP734(SwitcherInterface):
             cmd = b'Y 1 8\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
-            sleep(1.0)
+            # sleep(1.0)
             self.read_response()
             return self._av_mute
         except Exception as e:
