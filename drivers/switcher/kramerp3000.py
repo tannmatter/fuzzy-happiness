@@ -144,7 +144,7 @@ class KramerP3000(SwitcherInterface):
 
                 # select called here without a timeout, so recv() blocks until there is input available
                 inputs_available, _, _ = select.select(
-                    in_socks, [], [], 0
+                    in_socks, [], []
                 )
                 buffer = b''
                 # there is data available to read
