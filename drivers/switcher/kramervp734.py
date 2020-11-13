@@ -1,3 +1,27 @@
+"""Kramer VP-734
+
+There is a very strange bug that I'm not sure how to solve.  There is a
+difference in output returned by the switcher when connected via RS-232 versus
+ethernet, but only when switching between inputs of different types (eg. RGB
+and HDMI).  If switching from any HDMI port to another HDMI port, we receive
+the 'Z 0 30 x' message that tells us it landed on the new input.  Same goes
+for switching from either RGB port to the other.  This message is what updates
+_input_status and causes select_input() to return the new input signifying
+that it worked.  But when switching from HDMI to RGB or vice versa, that
+'Z 0 30 x' message is not emitted, nor is the 'Y 0 30 x' message that often
+accompanies it.  Again, this is only when connected via ethernet, not RS232.
+Over RS232, all input switches emit the proper 'Z 0 30 x' message telling us
+that we succeeded.  So weird.  I had actually noticed this bug when first
+testing this driver but I forgot about it until I started working on cleaning
+it up.  Not even sure how I'd go about fixing that.  Is it a firmware issue?
+
+At any rate, RS-232 is the preferred method of communication, primarily because
+1) the switcher lives inside the cabinet close to the controller, and
+2) it's cheaper than installing another data drop or a router in each room.
+The only devices we need to control over ethernet are likely projectors and
+possibly TVs.
+"""
+
 import enum
 import logging
 import select
