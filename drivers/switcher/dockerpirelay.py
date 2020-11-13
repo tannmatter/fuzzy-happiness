@@ -33,7 +33,7 @@ class DockerPiRelay(SwitcherInterface):
     def __init__(self, device_bus=1, device_addr=0x10, inputs: dict = None, press=0.3):
         try:
             self._DEVICE_BUS = device_bus
-            self._DEVICE_ADDR = 0x10
+            self._DEVICE_ADDR = device_addr
             self._bus = smbus.SMBus(device_bus)
             self._selected_input = None
             self.press = press
