@@ -54,11 +54,31 @@ class KramerVP734(SwitcherInterface):
             elif isinstance(self.connection, socket):
                 return self.connection.send(data)
 
-        def recv(self, size=BUFF_SIZE):
+        def recv(self, size=BUFF_SIZE, delay=0.3):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
             elif isinstance(self.connection, socket):
-                return self.connection.recv(size)
+                # to switch back to blocking socket: uncomment this
+                # return self.connection.recv(size)
+
+                in_socks = [self.connection]
+
+                # select called here without a timeout, so recv() blocks until there is input available
+                inputs_available, _, _ = select.select(
+                    in_socks, [], []
+                )
+                buffer = b''
+                # there is data available to read
+                if self.connection in inputs_available:
+                    data_available = True
+                    while data_available:
+                        try:
+                            buffer += self.connection.recv(BUFF_SIZE)
+                            sleep(delay)
+                        except BlockingIOError as e:
+                            # break the loop
+                            data_available = False
+                return buffer
 
         def reset_input_buffer(self):
             if isinstance(self.connection, Serial):
@@ -346,7 +366,7 @@ class KramerVP734(SwitcherInterface):
     }
 
     def __init__(self, serial_device='/dev/ttyUSB0', serial_baudrate=115200, serial_timeout=0.5, comm_method='serial',
-                 ip_address=None, ip_port=5000, tcp_timeout=2.0, inputs: dict = None):
+                 ip_address=None, ip_port=5000, tcp_timeout=None, inputs: dict = None):
         try:
             self._power_status = None
             self._input_status = None
@@ -365,6 +385,9 @@ class KramerVP734(SwitcherInterface):
                 self.comms.tcp_port = ip_port
                 self.comms.tcp_timeout = tcp_timeout
                 self.comms.connection = create_connection((ip_address, ip_port), timeout=tcp_timeout)
+                # if timeout is None use nonblocking socket
+                if not tcp_timeout:
+                    self.comms.connection.setblocking(False)
 
             # Take a dictionary of custom input labels & values...
             if inputs and isinstance(inputs, dict):
@@ -394,6 +417,8 @@ class KramerVP734(SwitcherInterface):
                 (self.comms.tcp_ip_address, self.comms.tcp_port),
                 timeout=self.comms.tcp_timeout
             )
+            if not self.comms.tcp_timeout:
+                self.comms.connection.setblocking(False)
 
     def close_connection(self):
         self.comms.connection.close()
