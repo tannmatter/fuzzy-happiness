@@ -551,6 +551,7 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('power_on() called')
             self.open_connection()
+            self.comms.reset_input_buffer()
             cmd = b'Y 0 10 1\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
@@ -566,6 +567,7 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('power_off() called')
             self.open_connection()
+            self.comms.reset_input_buffer()
             cmd = b'Y 0 10 0\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
@@ -582,6 +584,7 @@ class KramerVP734(SwitcherInterface):
         try:
             if input_ in self.inputs.__members__:
                 self.open_connection()
+                self.comms.reset_input_buffer()
                 input_enum_val = self.inputs[input_].value
                 cmd = b'Y 0 30 ' + bytes(str(input_enum_val), 'ascii') + b'\r'
                 logger.debug('sending: {}'.format(cmd))
@@ -604,6 +607,7 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('power_status property called')
             self.open_connection()
+            self.comms.reset_input_buffer()
             cmd = b'Y 1 10\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
@@ -624,6 +628,7 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('input_status property called')
             self.open_connection()
+            self.comms.reset_input_buffer()
             cmd = b'Y 1 30\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
@@ -644,6 +649,7 @@ class KramerVP734(SwitcherInterface):
         try:
             logger.debug('av_mute property called')
             self.open_connection()
+            self.comms.reset_input_buffer()
             cmd = b'Y 1 8\r'
             logger.debug('sending: {}'.format(cmd))
             self.comms.send(cmd)
