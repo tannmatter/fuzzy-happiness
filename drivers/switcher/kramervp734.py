@@ -11,15 +11,25 @@ that it worked.  But when switching from HDMI to RGB or vice versa, that
 'Z 0 30 x' message is not emitted, nor is the 'Y 0 30 x' message that often
 accompanies it.  Again, this is only when connected via ethernet, not RS232.
 Over RS232, all input switches emit the proper 'Z 0 30 x' message telling us
-that we succeeded.  So weird.  I had actually noticed this bug when first
-testing this driver but I forgot about it until I started working on cleaning
-it up.  Not even sure how I'd go about fixing that.  Is it a firmware issue?
+that we succeeded.
 
-At any rate, RS-232 is the preferred method of communication, primarily because
-1) the switcher lives inside the cabinet close to the controller, and
-2) it's cheaper than installing another data drop or a router in each room.
-The only devices we need to control over ethernet are likely projectors and
-possibly TVs.
+At any rate, RS232 is the preferred method of communication for multiple reasons:
+1) The switcher lives inside the cabinet close to the controller.
+2) It's cheaper than installing another data drop or a router in each room.
+3) I've had major issues with timeouts and other quirks with this switcher.
+
+Quirks include:
+I had to increase the timeout to 2.0 seconds to avoid timing out too often.
+I'm probably doing something stupid but I don't know what it is, as I don't
+have much experience with socket programming.  Also, when switching the device
+off over ethernet, it seems to lose it's connection.  Attempts to  turn
+it back on using the same connection will fail.  Finally, it appears that our
+VP-734 fails to renew a DHCP lease when it expires.  Several mornings during
+development and testing I had to power the unit off and on again to get it to
+reconnect.  It would report having the same address as the previous day but
+was entirely unreachable at that address.  Once it rebooted, it always got
+a different address, indicating that the original had been handed out to
+somebody else, probably hours earlier.
 """
 
 import enum
@@ -51,6 +61,8 @@ logger.addHandler(file_handler)
 
 
 class KramerVP734(SwitcherInterface):
+    """Specifically for the Kramer VP-734 presentation switcher.
+    Works over RS232 or ethernet, with RS232 preferred for reliability"""
 
     _default_inputs = {
         "RGB_1": 0,
@@ -370,7 +382,24 @@ class KramerVP734(SwitcherInterface):
     }
 
     def __init__(self, serial_device='/dev/ttyUSB0', serial_baudrate=115200, serial_timeout=0.5, comm_method='serial',
-                 ip_address=None, ip_port=5000, tcp_timeout=2.0, inputs: dict = None):
+                 ip_address=None, port=5000, tcp_timeout=2.0, inputs: dict = None):
+        """Constructor
+
+        :param str serial_device: The serial device to use (if comm_method=='serial').
+            Default is '/dev/ttyUSB0'.
+        :param int serial_baudrate: Serial baudrate of the device.
+            Default is 115200.
+        :param float serial_timeout: Timeout for serial operations (if comm_method=='serial').
+            Default is 0.5.
+        :param str comm_method: Communication method.  Supported values are 'serial' and 'tcp'.
+            Default is 'serial'.
+        :param str ip_address: IP address of the device (if comm_method=='tcp').
+        :param int port: Port to connect to (if comm_method=='tcp').
+            Default is 5000.
+        :param float tcp_timeout: Timeout for socket operations (if comm_method=='tcp').
+            Default is 2.0. (Lesser values have been problematic with this device.)
+        :param dict inputs: Dictionary of custom input labels & values.
+        """
         try:
             self._power_status = None
             self._input_status = None
@@ -386,9 +415,9 @@ class KramerVP734(SwitcherInterface):
             elif comm_method == 'tcp' and ip_address is not None:
                 self.comms = self.Comms()
                 self.comms.tcp_ip_address = ip_address
-                self.comms.tcp_port = ip_port
+                self.comms.tcp_port = port
                 self.comms.tcp_timeout = tcp_timeout
-                self.comms.connection = create_connection((ip_address, ip_port), timeout=tcp_timeout)
+                self.comms.connection = create_connection((ip_address, port), timeout=tcp_timeout)
 
             # Take a dictionary of custom input labels & values...
             if inputs and isinstance(inputs, dict):

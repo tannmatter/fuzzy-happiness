@@ -83,21 +83,21 @@ class GPIORelay(SwitcherInterface):
         return self._selected_input
 
     def power_on(self):
-        logger.debug("power_on(): operation not supported with this class")
+        logger.debug("power_on(): operation not supported with this device")
         return None
 
     def power_off(self):
-        logger.debug("power_off(): operation not supported with this class")
+        logger.debug("power_off(): operation not supported with this device")
         return None
 
     @property
     def power_status(self):
-        logger.debug("power_status: operation not supported with this class")
+        logger.debug("power_status: operation not supported with this device")
         return None
 
     @property
     def av_mute(self):
-        logger.debug("av_mute: operation not supported with this class")
+        logger.debug("av_mute: operation not supported with this device")
         return None
 
     def __del__(self):

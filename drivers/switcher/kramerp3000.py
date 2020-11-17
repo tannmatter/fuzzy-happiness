@@ -4,7 +4,7 @@ This was tested with a VS-42UHD 4x2 HDMI matrix switcher and a VS-211UHD 2x1 HDM
 Command prologue: '#'
 Response prologue: '~NN@' where NN is the ID of the device (ordinarily 01 unless reassigned)
 
-Command epilogue: '\r' (ordinarily.  I believe the switcher ignores any '\n' sent)
+Command epilogue: '\r'
 Response epilogue: '\r\n'
 
 Error codes:
@@ -24,29 +24,6 @@ Error codes:
         001 - syntax error
         002 - command not available on this device
         003 - parameter out of range
-
-    There are a lot more but most we don't need to worry about.
-
-Observations:
-    -   The VS-42UHD works with baud 115200 by default, however the VS-211UHD does not.
-        9600 is the only supported rate on the VS-211UHD.  I was able to set the VS-42UHD
-        to use 9600 (while connected at 115200) so we could define a default baudrate for all.
-        After sending '#BAUD 9600\r', the switcher output will stop making sense over 115200
-        (sometimes all null bytes and sometimes nothing).  Reconnecting over 9600 makes it
-        work again as expected.  The setting seems permanent, ie. it survives a power cycle.
-        You can also change this from the web interface.
-
-    -   The commands available between devices vary quite a bit.  The '#HELP' format differs
-        a bit as well.  The '#HELP' command should list every command supported by the device.
-        The manual claims you can request help on specific command by sending '#HELP COMMAND_NAME',
-        but neither of our switchers seem to support this?  Just gives a syntax error.
-
-    -   Regarding routing/switching on the VS-42: the '#ROUTE?' query will always return a
-        corresponding '~01@ROUTE' response.  However a '#ROUTE' setting command returns a
-        '~01@VID' response.  This switcher does not have separate audio inputs, and
-        attempting to '#ROUTE' a layer other than video (1) will result in an error.
-        The VS-211UHD does not have the '#ROUTE' or '#ROUTE?' commands at all.  We use
-        '#VID' and '#VID?' for it.
 """
 
 import enum
@@ -82,7 +59,8 @@ logger.addHandler(file_handler)
 
 
 class KramerP3000(SwitcherInterface):
-    """Very basic Kramer Protocol 3000 driver.
+    """Kramer Protocol 3000.  Can control devices with numbered inputs & outputs
+    over RS232 or ethernet.
     """
 
     _default_inputs = {
@@ -110,9 +88,9 @@ class KramerP3000(SwitcherInterface):
             self.serial_device = None
             self.serial_baudrate = None
             self.serial_timeout = None
-            self.ip_address = None
-            self.ip_port = None
-            self.ip_timeout = None
+            self.tcp_ip_address = None
+            self.tcp_port = None
+            self.tcp_timeout = None
 
         def send(self, data):
             """Send bytes
@@ -137,9 +115,6 @@ class KramerP3000(SwitcherInterface):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
             elif isinstance(self.connection, socket):
-                # to switch back to blocking socket: uncomment this
-                # return self.connection.recv(size)
-
                 in_socks = [self.connection]
 
                 # select called here without a timeout, so recv() blocks until there is input available
@@ -171,7 +146,7 @@ class KramerP3000(SwitcherInterface):
             elif isinstance(self.connection, socket):
                 in_socks = [self.connection]
 
-                # select called here with timeout of 0, so it polls instead of blocking!
+                # select called here with timeout of 0, so it does not block
                 ins_available, _, _ = select.select(
                     in_socks, [], [], 0
                 )
@@ -187,27 +162,23 @@ class KramerP3000(SwitcherInterface):
                         except BlockingIOError as e:
                             data_available = False
 
-    def __init__(self, device='/dev/ttyUSB0', *, comm_method='serial', baudrate=9600, timeout=0.25,
-                 ip_address=None, ip_port=5000, inputs: dict = None, outputs: dict = None):
+    def __init__(self, serial_device='/dev/ttyUSB0', *, comm_method='serial', serial_baudrate=9600, serial_timeout=0.25,
+                 ip_address=None, port=5000, inputs: dict = None, outputs: dict = None):
         """Constructor
 
-        The default means of communication is RS-232 serial as 1) it seems the most reliable from experiments, and
-        2) most switchers are going to be living inside a cabinet in close proximity to the controller.
-        I have had troubles with occasional socket timeouts when using TCP/IP with these switchers, moreso than
-        with other devices. You may have to adjust the baudrate (or reconfigure your Kramer switch to use
-        the lower baud) as some - like our VS-42UHD - use 115200 by default, and others - like our VS-211UHD
-        use 9600.  After device, all args should be keyword args.
+        The default means of communication is RS-232 serial.  After serial_device,
+        all args should be keyword args.
 
-        :param str device: Serial device to use (if comm_method=='serial').
+        :param str serial_device: Serial device to use (if comm_method=='serial').
             Default is '/dev/ttyUSB0'
         :param str comm_method: Communication method.  Supported values are 'serial' and 'tcp'.
             Defaults is 'serial'.
-        :param int baudrate: Serial baudrate (if comm_method=='serial').
+        :param int serial_baudrate: Serial baudrate (if comm_method=='serial').
             Default is 9600.
-        :param float timeout: Read timeout for serial operations (if comm_method=='serial').
+        :param float serial_timeout: Read timeout for serial operations (if comm_method=='serial').
             Default is 0.25
         :param str ip_address: IP address of the device (if comm_method=='tcp').
-        :param int ip_port: Port number to connect to (if comm_method=='tcp').
+        :param int port: Port number to connect to (if comm_method=='tcp').
         :param dict inputs: Dictionary of custom input labels and values.
             If None, the defaults are used.
         :param dict outputs: Dictionary of custom output labels & values.
@@ -217,17 +188,17 @@ class KramerP3000(SwitcherInterface):
         try:
             if comm_method == 'serial':
                 self.comms = self.Comms()
-                self.comms.serial_device = device
-                self.comms.serial_baudrate = baudrate
-                self.comms.serial_timeout = timeout
-                self.comms.connection = Serial(port=device, baudrate=baudrate, timeout=timeout)
+                self.comms.serial_device = serial_device
+                self.comms.serial_baudrate = serial_baudrate
+                self.comms.serial_timeout = serial_timeout
+                self.comms.connection = Serial(port=serial_device, baudrate=serial_baudrate, timeout=serial_timeout)
                 self.comms.connection.close()
 
             elif comm_method == 'tcp' and ip_address is not None:
                 self.comms = self.Comms()
-                self.comms.ip_address = ip_address
-                self.comms.ip_port = ip_port
-                self.comms.connection = create_connection((ip_address, ip_port), timeout=None)
+                self.comms.tcp_ip_address = ip_address
+                self.comms.tcp_port = port
+                self.comms.connection = create_connection((ip_address, port), timeout=None)
                 self.comms.connection.setblocking(False)
                 self.comms.connection.close()
 
@@ -275,7 +246,7 @@ class KramerP3000(SwitcherInterface):
             self.comms.connection.open()
         elif isinstance(self.comms.connection, socket):
             self.comms.connection = create_connection(
-                (self.comms.ip_address, self.comms.ip_port), timeout=None
+                (self.comms.tcp_ip_address, self.comms.tcp_port), timeout=None
             )
             self.comms.connection.setblocking(False)
 
@@ -284,13 +255,12 @@ class KramerP3000(SwitcherInterface):
         """
         self.comms.connection.close()
 
-    def _try_cmd(self, cmd):
+    def __try_cmd(self, cmd):
         """Helper method for input_status and select_input
 
         :param bytes cmd: Command to send
-        :returns: Tuple of error received (if any) and the bytes
-            from the switcher's response.  If no errors occurred,
-            returns tuple of True and the response.
+        :returns: Error received (if it's one we know about)
+            or the whole response from the switcher otherwise.
         """
         if isinstance(cmd, str):
             cmd = cmd.encode()
@@ -300,67 +270,68 @@ class KramerP3000(SwitcherInterface):
         self.comms.send(cmd)
         response = self.comms.recv()
 
-        # If '\r\n' appears in the middle of a response (as does with multi-output switchers), the middle '\r\n' is
-        # replaced with a pipe for cleaner logging.  The trailing '\r\n' is first rstripped.
-        logger.debug('_try_cmd:: cmd: "{}", response: "{}"'.
+        # If '\r\n' appears in the middle of a response, it is replaced with a pipe (|)
+        # for cleaner logging.  The trailing '\r\n' is first taken care of by rstrip()
+        logger.debug('__try_cmd:: cmd: "{}", response: "{}"'.
                      format(cmd.decode().rstrip(), response.decode().rstrip().replace('\r\n', ' | ')))
 
-        # Return which error, if any, was received, or True and the response itself otherwise
-        # (These are not the only errors possible, just the only ones we're going to worry about here)
         if not response:
-            raise IOError('_try_cmd(): Communication error: empty response')
+            raise IOError('__try_cmd(): Communication error: empty response')
         elif re.search(self.Error.CMD_UNAVAILABLE.value, response):
-            return self.Error.CMD_UNAVAILABLE, response
+            return self.Error.CMD_UNAVAILABLE
         elif re.search(self.Error.PARAM_OUT_OF_RANGE.value, response):
-            return self.Error.PARAM_OUT_OF_RANGE, response
+            return self.Error.PARAM_OUT_OF_RANGE
         elif re.search(self.Error.SYNTAX.value, response):
-            return self.Error.SYNTAX, response
+            return self.Error.SYNTAX
         else:
-            return True, response
+            return response
 
     def select_input(self, input_='1', output='ALL'):
         """Select an input to route to the specified output
 
-        Tries any of several Protocol 3000 routing/switching commands in order until one succeeds:
-        #ROUTE, #AV, #VID.
+        Tries several Protocol 3000 routing/switching commands in order until one succeeds:
+        #ROUTE, #AV, or #VID.
 
-        :param str input_: Name of input to route
+        :param str input_: Name of input to route.
+            Default is '1'.
         :param str output: Name of output to route to.
             Default is 'ALL'.
         :rtype: KramerP3000.Input
         :returns: The input selected if no errors are reported
         """
         try:
-            inp = self.inputs[input_].value
-            outp = self.outputs[output].value
+            in_value = self.inputs[input_].value
+            out_value = self.outputs[output].value
 
+            # AV I place before VID because if a device has separate routable audio & video,
+            # we'd prefer to route them both together here.  Handling them separately is
+            # way too complicated and beyond the scope of what we're trying to do.
             try_in_order = [
-                '#ROUTE 1,{},{}\r'.format(outp, inp),
-                '#AV {}>{}\r'.format(inp, outp),
-                '#VID {}>{}\r'.format(inp, outp)
+                '#ROUTE 1,{},{}\r'.format(out_value, in_value),
+                '#AV {}>{}\r'.format(in_value, out_value),
+                '#VID {}>{}\r'.format(in_value, out_value)
             ]
 
             self.open_connection()
             self.comms.reset_input_buffer()
 
             for cmd in try_in_order:
-                result, response = self._try_cmd(cmd.encode())
+                response = self.__try_cmd(cmd.encode())
                 logger.debug("select_input(): response: '{}'".format(response))
-                if result == self.Error.CMD_UNAVAILABLE:
+                if response == self.Error.CMD_UNAVAILABLE:
                     # try the next one
                     continue
-                elif result == self.Error.PARAM_OUT_OF_RANGE:
-                    raise ValueError('select_input(): Input or output number out of range - '
-                                     'input={}, output={}'.format(inp, outp))
-                elif result == self.Error.SYNTAX:
-                    raise SyntaxError('select_input(): KramerP3000 syntax error: {}'.format(cmd))
-                # if result is True and no ERR is reported, we probably succeeded
-                elif result and b'ERR' not in response:
-                    return inp
-                else:
-                    raise Exception('select_input(): An unknown error was reported by the switcher: {}'.
+                elif response == self.Error.PARAM_OUT_OF_RANGE:
+                    raise ValueError('Input or output number out of range - '
+                                     'input={}, output={}'.format(in_value, out_value))
+                elif response == self.Error.SYNTAX:
+                    raise SyntaxError('Protocol 3000 syntax error: {}'.format(cmd))
+                elif b'ERR' in response:
+                    raise Exception('An unknown error was reported by the switcher: {}'.
                                     format(response.decode()))
-
+                else:
+                    # no errors reported, our command probably worked
+                    return self.inputs[input_]
         except Exception as e:
             logger.error('select_input(): Exception occurred: {}'.format(e.args), exc_info=True)
             raise e
@@ -371,48 +342,43 @@ class KramerP3000(SwitcherInterface):
     def input_status(self):
         """Get the input(s) assigned to our output(s)
 
-        This tries to detect what our input>output routing assignment(s) is(are) using a few different commands.
+        This tries to detect which inputs are routed to which outputs using a few different query commands.
         Returns a list of input assignments. If the switcher only has a single output, the list will contain
-        a single input.
+        a single value: the input routed to that output.
 
-        :rtype: list
+        :rtype: list[KramerP3000.Input]
         :returns: List of KramerP3000.Input members corresponding to the
             current routing assignments for each output
         """
-
-        # If none of these work, we have a problem I think?
         try_in_order = [
             b'#ROUTE? 1,*\r',
             b'#AV? *\r',
             b'#VID? *\r',
-            b'#AV? 1\r',  # maybe it doesn't like the '*'?
+            b'#AV? 1\r',
             b'#VID? 1\r'
         ]
 
         try:
             self.open_connection()
-
-            # This is done first to ensure the read buffer is empty before executing our queries.
-            # Anything left in the buffer could prevent us from correctly parsing our query reponses.
-            # KramerP3000 is bidirectional, so any button pressed on the switcher will output chatter
-            # into our read buffer!
             self.comms.reset_input_buffer()
 
             for cmd in try_in_order:
-                result, response = self._try_cmd(cmd)
-                logger.debug("input_status(): response: '{}'".format(response))
-                if result == self.Error.CMD_UNAVAILABLE:
-                    # try the next command
+                response = self.__try_cmd(cmd)
+                logger.debug("input_status: response: '{}'".format(response))
+                if response == self.Error.CMD_UNAVAILABLE:
                     continue
-                elif result == self.Error.PARAM_OUT_OF_RANGE:
-                    raise ValueError('input_status: Param out of range: {}'.format(cmd.decode()))
-                elif result == self.Error.SYNTAX:
-                    raise SyntaxError('input_status: KramerP3000 syntax error: {}'.format(cmd.decode()))
-                elif result and b'ERR' not in response:
+                elif response == self.Error.PARAM_OUT_OF_RANGE:
+                    raise ValueError('Parameter out of range: {}'.format(cmd.decode()))
+                elif response == self.Error.SYNTAX:
+                    raise SyntaxError('Protocol 3000 syntax error: {}'.format(cmd.decode()))
+                elif b'ERR' in response:
+                    raise Exception('An unknown error was reported by the switcher: {}'.
+                                    format(response.decode()))
+                else:
                     if b'ROUTE' in response:
-                        # If '#ROUTE? 1,*' worked, the result should look like this (according to the VS-42 output):
+                        # If '#ROUTE? 1,*' worked, the result should look like:
                         # b'~01@ROUTE 1,1,1\r\n~01@ROUTE 1,2,1\r\n'
-                        #                 ^                  ^ The third number in each is the input
+                        #                 ^                  ^ We want the 3rd number.
                         routes = response.split(b'\r\n')
                         inputs = []
                         for route in routes:
@@ -422,33 +388,21 @@ class KramerP3000(SwitcherInterface):
                                 inputs.append(input_)
                         return inputs
                     elif b'VID' in response or b'AV' in response:
-                        # If '#VID? *' or '#AV? *' worked, output should look like this:
-                        # b'~01@VID|AV #>#,#>#,...\r\n' - with commas separating each route assignment.
-                        #              ^   ^ The first number in each is the input
+                        # If '#VID? *' worked, the result should look like:
+                        # b'~01@VID 1>1,1>2\r\n'
+                        #           ^   ^ We want the 1st number.
+                        # (I assume #AV is similar, though our switchers don't support it)
                         match = re.search(rb'~\d+@(VID|AV)\s+([0-9>,]+)\r\n', response)
                         if match:
-                            # If we matched, match.group(1) contains either 'VID' or 'AV', and
-                            # match.group(2) contains all our routing info (#>#,#>#,...)
                             routing_info = match.group(2)
-
-                            # Split by commas, if any
                             routes = routing_info.split(b',')
-                            # routes will be a list of byte strings that all look like b'#>#'
-                            # (If there are no commas, split returns a list with one member: the entire string itself)
                             inputs = []
                             for route in routes:
-                                # We want the first number
-                                input_match = re.search(rb'(\d+)>\d+', route)
-                                if input_match:
-                                    input_ = self.inputs(input_match.group(1).decode())
+                                route_match = re.search(rb'(\d+)>\d+', route)
+                                if route_match:
+                                    input_ = self.inputs(route_match.group(1).decode())
                                     inputs.append(input_)
                             return inputs
-                    else:
-                        raise IOError('input_status(): Communication error')
-                else:
-                    # 'ERR' contained in response but not one we know about.
-                    raise Exception('input_status: An unknown error was reported by the switcher: {}'.
-                                    format(response.decode()))
 
         except Exception as e:
             logger.error('input_status: Exception occurred: '.format(e.args), exc_info=True)
@@ -460,24 +414,23 @@ class KramerP3000(SwitcherInterface):
     def power_on(self):
         """Unsupported
         """
-        logger.debug('power_on(): Unsupported')
+        logger.debug('power_on(): operation not supported with this device')
         return None
 
     def power_off(self):
         """Unsupported
         """
-        logger.debug('power_off(): Unsupported')
+        logger.debug('power_off(): operation not supported with this device')
         return None
 
     @property
     def power_status(self):
         """Unsupported
         """
-        logger.debug('power_status: Unsupported')
+        logger.debug('power_status: operation not supported with this device')
         return None
 
     @property
     def av_mute(self):
-        # todo: maybe think about implementing this (or don't). it's queried per output so that's a pain of course
         logger.warning('av_mute: Not implemented')
         return False

@@ -24,6 +24,8 @@ logger.addHandler(file_handler)
 
 
 class SamsungExLink(TVInterface):
+    """For Samsung TVs with RS-232 control only.
+    """
     _default_inputs = {
         "TV": b'\x00\x00',
         "VIDEO_1": b'\x01\x00',
@@ -131,8 +133,14 @@ class SamsungExLink(TVInterface):
             return bytes([two_fifty_six - abs(diff)])
 
     def __cmd(self, cmd: Command, param: bytes = None):
-        """If a parameter is provided, it is appended to the command (passed in cmd)
-        and the result is checksummed and sent to the TV."""
+        """Send command and log the response
+
+        If a parameter is provided, it is appended to the command
+        and the result is checksummed and sent to the TV.
+
+        :param SamsungExLink.Command cmd: Command to send.
+        :param bytes param: Additional command parameter.
+        """
         try:
             cmd_bytes = cmd.value
             if param:

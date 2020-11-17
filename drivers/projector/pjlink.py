@@ -27,7 +27,8 @@ logger.addHandler(file_handler)
 class PJLink(ProjectorInterface):
     """A PJLink projector driver based on the PJLink specs v 2.00, dated
     2017-1-31 (latest I could find)
-    https://pjlink.jbmia.or.jp/english/data_cl2/PJLink_5-1.pdf
+    https://pjlink.jbmia.or.jp/english/data_cl2/PJLink_5-1.pdf.
+    For controlling PJLink-compatible projectors over ethernet only.
     """
 
     class Comms(ProjectorInterface.Comms):
@@ -36,7 +37,7 @@ class PJLink(ProjectorInterface):
         # socket connection
         connection = None
         ip_address = None
-        ip_port = 4352
+        port = 4352
 
         def send(self, data):
             if isinstance(self.connection, socket):
@@ -128,22 +129,22 @@ class PJLink(ProjectorInterface):
         3: 'All muted'
     }
 
-    def __init__(self, ip_address=None, ip_port=4352, inputs: dict = None):
-        """Create a PJLink projector driver instance and initialize a connection to the
+    def __init__(self, ip_address=None, port=4352, inputs: dict = None):
+        """Constructor
+
+        Create a PJLink projector driver instance and initialize a connection to the
         projector over TCP (default port 4352).
 
         :param str ip_address: IP address of the device
-        :param int ip_port: Port to connect to.  Defaults to 4352.
+        :param int port: Port to connect to.  Defaults to 4352.
         :param dict inputs: Dictionary of custom input labels & values
-        :param drivers.projector.Projector pj: Reference back to the Projector object
-            using this ProjectorInterface instance.
         """
         self.comms = self.Comms()
         try:
             if ip_address is not None:
-                self.comms.connection = create_connection((ip_address, ip_port))
+                self.comms.connection = create_connection((ip_address, port))
                 self.comms.ip_address = ip_address
-                self.comms.ip_port = ip_port
+                self.comms.port = port
                 self.comms.connection.close()
 
                 # get what PJLink class we support
@@ -210,7 +211,7 @@ class PJLink(ProjectorInterface):
             if self.comms is not None:
                 if self.comms.ip_address is not None:
                     self.comms.connection = create_connection(
-                        (self.comms.ip_address, self.comms.ip_port)
+                        (self.comms.ip_address, self.comms.port)
                     )
 
                 self.comms.send(cmd_str)

@@ -23,6 +23,8 @@ logger.addHandler(file_handler)
 
 
 class DockerPiRelay(SwitcherInterface):
+    """For the DockerPi series relay hat from 52Pi."""
+
     _default_inputs = {
         '1': 0x01,
         '2': 0x02,
@@ -30,13 +32,23 @@ class DockerPiRelay(SwitcherInterface):
         '4': 0x04
     }
 
-    def __init__(self, device_bus=1, device_addr=0x10, inputs: dict = None, press=0.3):
+    def __init__(self, device_bus=1, device_addr=0x10, inputs: dict = None, duration=0.3):
+        """Constructor
+
+        :param int device_bus: i2c device bus.
+            Default is 1.
+        :param int device_addr: i2c device address.  Valid values are 0x10 - 0x13.
+            Default is 0x10.
+        :param dict inputs: Dictionary of input labels & values
+        :param float duration: Duration of relay activation in seconds.
+            Default is 0.3
+        """
         try:
             self._DEVICE_BUS = device_bus
             self._DEVICE_ADDR = device_addr
             self._bus = smbus.SMBus(device_bus)
             self._selected_input = None
-            self.press = press
+            self._activate_duration = duration
 
             if inputs and isinstance(inputs, dict):
                 self.inputs = enum.Enum(
@@ -53,12 +65,18 @@ class DockerPiRelay(SwitcherInterface):
             sys.exit(1)
 
     def select_input(self, input_: str = '1'):
+        """Switch inputs
+
+        :param str input_: Name of input to select
+        :rtype DockerPiRelay.Input
+        :return Input object selected
+        """
         try:
             input_enum = self.inputs[input_]
             val = input_enum.value
             logger.debug("selecting input :'{}'".format(self.inputs[input_]))
             self._bus.write_byte_data(self._DEVICE_ADDR, val, 0xFF)
-            time.sleep(self.press)
+            time.sleep(self._activate_duration)
             self._bus.write_byte_data(self._DEVICE_ADDR, val, 0x00)
 
         except Exception as e:
@@ -66,27 +84,31 @@ class DockerPiRelay(SwitcherInterface):
             raise e
 
         else:
-            self._selected_input = self.inputs[input_]
-            return self._selected_input
+            self._selected_input = input_enum
+            return input_enum
 
     @property
     def input_status(self):
         return self._selected_input
 
     def power_on(self):
-        logger.debug("power_on(): operation not supported with this class")
+        """Unsupported"""
+        logger.debug("power_on(): operation not supported with this device")
         return None
 
     def power_off(self):
-        logger.debug("power_off(): operation not supported with this class")
+        """Unsupported"""
+        logger.debug("power_off(): operation not supported with this device")
         return None
 
     @property
     def power_status(self):
-        logger.debug("power_status: operation not supported with this class")
+        """Unsupported"""
+        logger.debug("power_status: operation not supported with this device")
         return None
 
     @property
     def av_mute(self):
-        logger.debug("av_mute: operation not supported with this class")
+        """Unsupported"""
+        logger.debug("av_mute: operation not supported with this device")
         return None

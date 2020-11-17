@@ -56,8 +56,7 @@ logger.addHandler(file_handler)
 class NEC(ProjectorInterface):
     """A generic NEC projector driver based on the NEC control command manual,
     revision 7.1 dated April 16, 2020 and supplementary command information,
-    revision 20.0
-    https://www.nec-display-solutions.com/p/download/v/5e14a015e26cacae3ae64a422f7f8af4/cp/Products/Projectors/Shared/CommandLists/PDF-ExternalControlManual-english.pdf?fn=ExternalControlManual-english.pdf
+    revision 20.0.  For controlling NEC projectors over ethernet or RS-232.
     """
 
     """Default inputs for switching.
@@ -90,8 +89,8 @@ class NEC(ProjectorInterface):
         serial_device = None
         serial_baudrate = None
         serial_timeout = None
-        ip_address = None
-        ip_port = None
+        tcp_ip_address = None
+        tcp_port = None
 
         def send(self, data):
             if isinstance(self.connection, Serial):
@@ -307,7 +306,9 @@ class NEC(ProjectorInterface):
 
     def __init__(self, ip_address=None, *, port=7142, comm_method='tcp', serial_device=None,
                  serial_baudrate=38400, serial_timeout=0.1, inputs: dict = None):
-        """Create an NEC projector driver instance and initialize a connection to the
+        """Constructor
+
+        Create an NEC projector driver instance and initialize a connection to the
         projector over either serial (RS-232) or TCP. Default to TCP 7142.  After
         ip_address, all arguments should be keyword arguments.
 
@@ -324,8 +325,6 @@ class NEC(ProjectorInterface):
         :param float serial_timeout: Read timeout for serial operations.
             (if comm_method=='serial').
         :param dict inputs: Dictionary of custom input labels & values
-        :param drivers.projector.Projector pj: Reference back to the Projector object
-            using this ProjectorInterface instance.
         """
         self.comms = self.Comms()
 
@@ -340,8 +339,8 @@ class NEC(ProjectorInterface):
             elif comm_method == 'tcp' or comm_method == 'TCP':
                 if ip_address is not None and port is not None:
                     connection = create_connection((ip_address, port))
-                    self.comms.ip_address = ip_address
-                    self.comms.ip_port = port
+                    self.comms.tcp_ip_address = ip_address
+                    self.comms.tcp_port = port
                     self.comms.connection = connection
                     self.comms.connection.close()
                 else:
@@ -415,9 +414,9 @@ class NEC(ProjectorInterface):
 
         try:
             if self.comms is not None:
-                if self.comms.ip_address is not None:
+                if self.comms.tcp_ip_address is not None:
                     self.comms.connection = create_connection(
-                        (self.comms.ip_address, self.comms.ip_port)
+                        (self.comms.tcp_ip_address, self.comms.tcp_port)
                     )
                 elif self.comms.serial_device is not None:
                     self.comms.connection.open()
