@@ -1,4 +1,6 @@
-""" GENERAL RULES OF THUMB:
+"""Generic driver for all NEC projectors supporting RS232 and ethernet control.
+
+GENERAL RULES OF THUMB REGARDING NEC RESPONSE PARSING:
 
 See section 2.3 "Responses", p. 11
 
@@ -15,8 +17,8 @@ When a command error occurs, the response is as follows:
 Universally, the 3rd and 4th bytes of any response are the projector ID numbers
 
 The 5th byte cannot reliably be used as an indication of success or error.  It is almost always
-'02' in the case of error but is also occasionally the same value in the case of success.
-Ignore this byte
+0x02 in the case of error but is also occasionally the same value in the case of success.
+Ignore this byte.
 
 In the case of an error, bytes 6 and 7 are usually the error codes, as defined in NEC.cmd_errors
 
@@ -348,14 +350,11 @@ class NEC(ProjectorInterface):
             else:
                 raise ValueError("comm_method should be 'tcp' or 'serial'")
 
-            # Take a dictionary of custom input labels & values...
             if inputs and isinstance(inputs, dict):
-                # ...and merge it with the default inputs, creating an Enum to hold them...
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
                     module=__name__, qualname="drivers.projector.nec.NEC.Input"
                 )
-            # ...or just use the defaults provided by the driver for testing
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,

@@ -1,3 +1,9 @@
+"""Samsung ExLink driver.  Works other RS232.  For modern TVs, you'll need a
+Samsung proprietary USB serial adapter.  (https://imgur.com/a/Gka3r/)
+(https://www.ecdcom.com/index.jsp?path=product&part=38988&ds=dept&process=search&qdx=0&ID=%2CVideo%2CTVs.Projectors.and.Screens%2Cdept-1L1)
+Ordinary USB UARTs will NOT work.  Older TVs had 3.5mm plugs.
+"""
+
 import enum
 import logging
 import sys
@@ -26,6 +32,7 @@ logger.addHandler(file_handler)
 class SamsungExLink(TVInterface):
     """For Samsung TVs with RS-232 control only.
     """
+
     _default_inputs = {
         "TV": b'\x00\x00',
         "VIDEO_1": b'\x01\x00',
@@ -97,14 +104,11 @@ class SamsungExLink(TVInterface):
             self.comms.timeout = timeout
             self.comms.connection = Serial(port=device, baudrate=baudrate, timeout=timeout)
 
-            # Take a dictionary of custom input labels & values...
             if inputs and isinstance(inputs, dict):
-                # ...and merge it with the default inputs, creating an Enum to hold them...
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
                     module=__name__, qualname="drivers.tv.samsungexlink.SamsungExLink.Input"
                 )
-            # ...or just use the defaults provided by the driver for testing
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,

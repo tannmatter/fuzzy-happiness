@@ -1,4 +1,5 @@
-"""
+"""Kramer Protocol 3000.  ASCII protocol for controlling Kramer switchers over RS232 or ethernet.
+
 This was tested with a VS-42UHD 4x2 HDMI matrix switcher and a VS-211UHD 2x1 HDMI switcher.
 
 Command prologue: '#'
@@ -60,7 +61,8 @@ logger.addHandler(file_handler)
 
 class KramerP3000(SwitcherInterface):
     """Kramer Protocol 3000.  Can control devices with numbered inputs & outputs
-    over RS232 or ethernet.
+    over RS232 or ethernet.  Won't work on switchers using long format names for
+    inputs/outputs (like 'IN.HDMI.1') without modification.
     """
 
     _default_inputs = {
@@ -217,7 +219,7 @@ class KramerP3000(SwitcherInterface):
                     module=__name__, qualname="drivers.switcher.kramerp3000.KramerP3000.Input"
                 )
 
-            # Take an optional dictionary of custom output labels & values (for matrix switchers)...
+            # Do the same with the outputs (useful only for matrix switching)
             # ie. {'LEFT_TV': b'1', 'RIGHT_TV': b'2'...}
             if outputs and isinstance(outputs, dict):
                 self.outputs = enum.Enum(

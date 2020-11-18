@@ -1,3 +1,11 @@
+"""This is primarily for supporting Kramer switchers with contact closure terminal blocks
+and other similar devices.  They use momentary contact closure between a ground pin and
+eg. pin 1 to trigger the device to select input 1, etc.
+
+This driver targets I2C-based Raspberry Pi addon boards like the DockerPi relay hat.
+https://www.amazon.com/GeeekPi-Raspberry-Expansion-Programming-Programmable/dp/B07Q2P9D7K
+The relays are driven by the I2C bus using the System Management Bus (smbus) python library.
+"""
 import enum
 import logging
 import time
@@ -25,6 +33,9 @@ logger.addHandler(file_handler)
 class DockerPiRelay(SwitcherInterface):
     """For the DockerPi series relay hat from 52Pi."""
 
+    """Default inputs for switching
+    These are mostly here for documentation and testing as inputs should ideally be
+    passed to __init__ by the application."""
     _default_inputs = {
         '1': 0x01,
         '2': 0x02,
@@ -64,6 +75,14 @@ class DockerPiRelay(SwitcherInterface):
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
             sys.exit(1)
 
+    def __del__(self):
+        try:
+            # try to make sure all relays get powered off on shutdown
+            for k, v in self._default_inputs.items():
+                self._bus.write_byte_data(self._DEVICE_ADDR, v, 0x00)
+        except Exception as e:
+            logger.error('__del__(): Exception occurred on cleanup: {}'.format(e.args))
+
     def select_input(self, input_: str = '1'):
         """Switch inputs
 
@@ -80,7 +99,7 @@ class DockerPiRelay(SwitcherInterface):
             self._bus.write_byte_data(self._DEVICE_ADDR, val, 0x00)
 
         except Exception as e:
-            logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
+            logger.error('select_input(): Exception occurred: {}'.format(e.args))
             raise e
 
         else:

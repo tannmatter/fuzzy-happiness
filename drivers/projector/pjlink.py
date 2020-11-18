@@ -1,3 +1,6 @@
+"""PJ-Link projector driver supporting all PJ-Link compatible projectors over ethernet
+"""
+
 import enum
 import logging
 import sys
@@ -157,14 +160,11 @@ class PJLink(ProjectorInterface):
                 else:
                     self.lamp_count = 1
 
-                # Take a dictionary of custom input labels & values...
                 if inputs and isinstance(inputs, dict):
-                    # ...and merge it with the default inputs, creating an Enum to hold them...
                     self.inputs = enum.Enum(
                         value='Input', names=merge_dicts(inputs, self._default_inputs),
                         module=__name__, qualname='drivers.projector.pjlink.PJLink.Input'
                     )
-                # ...or just use the defaults provided by the driver for testing
                 else:
                     self.inputs = enum.Enum(
                         value='Input', names=self._default_inputs,

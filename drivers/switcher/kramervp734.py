@@ -1,4 +1,4 @@
-"""Kramer VP-734
+"""Kramer VP-734 driver
 
 There is a very strange bug that I'm not sure how to solve.  There is a
 difference in output returned by the switcher when connected via RS-232 versus
@@ -64,6 +64,9 @@ class KramerVP734(SwitcherInterface):
     """Specifically for the Kramer VP-734 presentation switcher.
     Works over RS232 or ethernet, with RS232 preferred for reliability"""
 
+    """Default inputs for switching
+    These are mostly here for documentation and testing as inputs should ideally be
+    passed to __init__ by the application."""
     _default_inputs = {
         "RGB_1": 0,
         "RGB_2": 1,
@@ -419,14 +422,11 @@ class KramerVP734(SwitcherInterface):
                 self.comms.tcp_timeout = tcp_timeout
                 self.comms.connection = create_connection((ip_address, port), timeout=tcp_timeout)
 
-            # Take a dictionary of custom input labels & values...
             if inputs and isinstance(inputs, dict):
-                # ...and merge it with the default inputs, creating an Enum to hold them...
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
                     module=__name__, qualname="drivers.switcher.kramervp734.KramerVP734.Input"
                 )
-            # ...or just use the defaults provided by the driver for testing
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,
