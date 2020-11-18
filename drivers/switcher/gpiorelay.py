@@ -97,7 +97,7 @@ class GPIORelay(SwitcherInterface):
         logger.debug('Cleaning up GPIO state for shutdown...')
         GPIO.cleanup()
 
-    def select_input(self, input_):
+    def select_input(self, input_: str = '1'):
         """Switch inputs
 
         :param str input_: Name of the input to switch to
@@ -116,6 +116,7 @@ class GPIORelay(SwitcherInterface):
             raise e
 
         else:
+            self._selected_input = input_enum
             return input_enum
 
     @property
