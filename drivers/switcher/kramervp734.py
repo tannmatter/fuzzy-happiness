@@ -8,10 +8,15 @@ the 'Z 0 30 x' message that tells us it landed on the new input.  Same goes
 for switching from either RGB port to the other.  This message is what updates
 _input_status and causes select_input() to return the new input signifying
 that it worked.  But when switching from HDMI to RGB or vice versa, that
-'Z 0 30 x' message is not emitted, nor is the 'Y 0 30 x' message that often
-accompanies it.  Again, this is only when connected via ethernet, not RS232.
-Over RS232, all input switches emit the proper 'Z 0 30 x' message telling us
-that we succeeded.
+'Z 0 30 x' message is not emitted, and I don't think the 'Y 0 30 x' message that
+normally precedes it is either.  Again, this is only when connected via ethernet,
+not RS232.  Over RS232, I believe all input switches emit the proper 'Z 0 30 x'
+message telling us that we succeeded.
+
+Update: I will need to get back into this and do some more experimenting to see
+if I can figure out the issue and exactly what messages are being transmitted
+& received. This switcher is located in a rack in another room and it is a pain
+to remove it and bring it to my office for debugging so I've let it slide for a bit.
 
 At any rate, RS232 is the preferred method of communication for multiple reasons:
 1) The switcher lives inside the cabinet close to the controller.
@@ -105,13 +110,12 @@ class KramerVP734(SwitcherInterface):
             elif isinstance(self.connection, socket):
                 in_socks = [self.connection]
 
-                # select called with a timeout of 0, so it polls instead of blocking
+                # poll to see if input is available
                 ins_available, _, _ = select.select(
                     in_socks, [], [], 0
                 )
-                junk_buffer = b''
-                # there is data available to read
                 if self.connection in ins_available:
+                    junk_buffer = b''
                     data_available = True
                     while data_available:
                         try:
@@ -121,7 +125,9 @@ class KramerVP734(SwitcherInterface):
                         except BlockingIOError as e:
                             data_available = False
 
-    # all of this (functions, data) is for debugging, mostly
+    # All of this (functions, data) is for debug logging mostly.
+    # Business logic really only needs to be concerned with the
+    # responses to functions 8, 10, and 30.
     functions = {
         0: "<MENU>", 1: "<UP>", 2: "<DOWN>", 3: "<LEFT>", 4: "<RIGHT>",
         5: "<ENTER>", 6: "<RESET {}>",
@@ -466,64 +472,67 @@ class KramerVP734(SwitcherInterface):
             while index < len(data_parts):
                 response = data_parts[index]
 
-                # only needed for special case below
                 response_parts = response.split()
 
                 index += 1
 
-                # send every response we care about off to be interpreted
-                if response.startswith(b'Z') or response == b'-':  # '-' == power query while powered on
+                # Send every response we care about off to be interpreted.
+                # ('-' is what we get from sending a power query if the switcher is powered on.)
+                if response.startswith(b'Z') or response == b'-':
                     self.parse(response.decode())
 
-                # special case for switching inputs:
-                # we don't always get back a response beginning with 'Z 0 30'
+                # Special case for switching inputs:
+                # We don't always get back a response beginning with 'Z 0 30',
                 # depending on which input we switched to/from, but there should
-                # always be one starting with 'Y 0 30'
+                # usually be one starting with 'Y 0 30' (maybe not? See notes in module __doc__)
                 elif len(response_parts) > 3 and response_parts[2] == b'30':
                     self.parse(response.decode())
 
     def parse(self, data: str):
         """Parse a response and set internal state
+
+        :param str data: Data read from the serial device or socket
         """
         logger.debug('parse() called with data=%s', data)
 
-        # if response contains ':' it doesn't fit the pattern we're looking for
-        # it's probably 'MAC:' or 'IP:' or some other message during bootup
+        # If response contains ':' it doesn't fit the pattern we're looking for.
+        # It's probably 'MAC:' or 'IP:' or some other message we see during bootup.
         if ':' in data:
             logger.debug('parse() says: %s', data)
             return
 
-        # another special case where it rattles off the firmware version numbers during boot.
-        # it looks like this:
+        # Another special case where it rattles off the firmware version numbers during boot.
+        # It looks like this:
         # b'\r\nVTR1.21 \r\nVTX1.07 \r\nVPD1.10 \r\nVTO1.01 \r\nVTN1.00 \r\nVPC1.16\r\n\r\n>'
-        # yeah, we're not interested in pretty much any of that but the main firmware is the first one
+        # Yeah, we're not interested in pretty much any of that, but the main firmware
+        # is the first one in case we want to log it for whatever reason.
         elif 'VTR' in data:
             logger.debug('parse() says: <FIRMWARE VERSION %s>', data.split()[0].strip())
             return
 
-        # now for the normal(ish) responses...
-        # split by whitespace
+        # Now for the normal(ish) responses...
+        # Split by whitespace
         data_parts = data.split()
 
-        # result has at least 3 parts... this should match everything
-        # except the '-' returned by a power status query while running
-        # data_parts[2] if present is the function called
+        # Result has at least 3 parts... this should match most responses that we see, except for the
+        # very terse '-' returned by a power status query ('Y 1 10') while the switcher is powered on.
+        # (If data_parts[2] is present, it is the command # or function called)
         if len(data_parts) > 2 and int(data_parts[2]) in self.functions.keys():
             func = int(data_parts[2])
 
             # data_parts[3] if present is the (first) parameter
             if len(data_parts) > 3:
 
-                # special case for network functions 201-203 - 4 params (IPV4 tetrads)
+                # Special case for network functions 201-203 - they have 4 params (IPV4 octets)
                 if len(data_parts) == 7:
                     addr = ".".join(data_parts[3:7])
                     logger.debug('parse() says: %s', self.functions[func].format(addr))
                     return
 
-                # we'll use param in all other cases below, so it's defined here
+                # We'll use param in all other cases below, so it's defined here
                 param = int(data_parts[3])
 
-                # special case for function 177 - auto switch input priority has 2 params
+                # Special case for function 177 - auto switch input priority has 2 params
                 if len(data_parts) > 4 and func == 177:
                     param2 = int(data_parts[4])
                     logger.debug('parse() says: %s', self.functions[func].format(
@@ -532,45 +541,58 @@ class KramerVP734(SwitcherInterface):
                                  )
                     return
 
-                # if that param is defined for the function, return the formatted str
-                # with the defined value of the param
+                # If data[func] contains a dict key matching the value of param, get that value
+                # and log a message to the logfile interpreting this response along with its parameter...
+                # ie. '<INPUT HDMI 1>' or '<VIDEO BLANK OFF>' is what we'll see in the log,
+                # instead of '<INPUT 3>' or '<VIDEO BLANK 0>'
                 elif func in self.data and param in self.data[func]:
                     logger.debug('parse() says: %s', self.functions[func].format(self.data[func][param]))
 
-                    # this is where the magic happens for tracking our switcher's state
-                    # video mute set/get
+                    # __This section is where the magic happens for tracking our switcher's state.__
+
+                    # Video blank set command ('Y 0 8 [0|1]') / get command ('Y 1 8')
+                    # Set response: 'Z 0 8 [0|1]' / Get response: 'Z 1 8 [0|1]'
                     if func == 8:
                         self._av_mute = bool(param)
-                    # power set/get (will only see on get if power is off, with power on it simply returns "-")
-                    # see special case below
+
+                    # Power state set command ('Y 0 10 [0|1]') / get command ('Y 1 10')
+                    # Set response: 'Z 0 10 [0|1]' / Get response: 'Z 1 10 0' or simply '-'.
+                    # (We will only see 'Z 1 10' in the get response if the power is currently off.
+                    # For whatever reason if the power is on it simply returns '-'.
+                    # We check for that response in a special case below.)
                     elif func == 10:
                         self._power_status = bool(param)
-                    # input set/get
+
+                    # Input set command ('Y 0 30 [0-6]') / get command ('Y 1 30')
+                    # Set response: 'Z 0 30 [0-6]' / Get response: 'Z 1 30 [0-6]'
                     elif func == 30:
                         self._input_status = self.inputs(param)
 
                     return
-                # otherwise, just log the formatted str for the function with the
-                # bare value of the param inserted
+                # ... otherwise, just log the function name along with the bare value of param.
+                # ie. '<BRIGHTNESS 50>', etc.
                 else:
                     logger.debug('parse() says: %s', self.functions[func].format(param))
                     return
 
-            # response had no parameters, log just the function called
+            # Response had no parameters? Just log the function called.
+            # <MENU>, <UP>, <DOWN>, <LEFT>, <RIGHT>, and <ENTER>
+            # keys on the front panel generate these responses.
             else:
                 logger.debug('parse() says: %s', self.functions[func])
                 return
 
-        # response is just "-", this is a weird response that comes when you ask
-        # the switcher for the power status while it's powered on.  We expect to
-        # receive 'Z 1 10 1\r\n' here but the VP-734 is quirky...
+        # Response is just "-".  This is what we get back when we send a power status query
+        # ('Y 1 10') to the switcher while it's powered on.  We would expect to receive
+        # 'Z 1 10 1' here but the VP-734 is a little quirky it seems...
         elif len(data_parts) == 1 and data_parts[0] == "-":
             self._power_status = True
             logger.debug('parse() says: Power query - power is ON')
             return
 
-        # or data_parts[2] not listed in our defined functions,
-        # must be something we didn't care enough to implement
+        # If data_parts[2] is not listed in our function dict,
+        # it must be something we didn't care enough to implement,
+        # so just log the bare response.
         else:
             logger.debug('parse() says: Unimplemented/unknown function %s', data)
             return
