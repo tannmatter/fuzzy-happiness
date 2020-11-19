@@ -14,6 +14,4 @@ that feature contact closure control.
 
 - drivers/tv - drivers for TVs.
 
-- rooms - example .json configs defining equipment present in a room/system.
-
 More to come later (a web-based generic configurable control system, more drivers...)

@@ -5,6 +5,8 @@ eg. pin 1 to trigger the device to select input 1, etc.
 This driver targets external multi-channel general-purpose relay boards such as these:
 https://www.amazon.com/JBtek-Channel-Module-Arduino-Raspberry/dp/B00KTEN3TM
 These are low-active relays driven by a Raspberry Pi's GPIO pins.
+
+As such, this driver needs to be tested on an actual Raspberry Pi.
 """
 import enum
 import RPi.GPIO as GPIO
