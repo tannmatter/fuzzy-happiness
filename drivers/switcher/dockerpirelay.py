@@ -5,6 +5,12 @@ eg. pin 1 to trigger the device to select input 1, etc.
 This driver targets I2C-based Raspberry Pi addon boards like the DockerPi relay hat.
 https://www.amazon.com/GeeekPi-Raspberry-Expansion-Programming-Programmable/dp/B07Q2P9D7K
 The relays are driven by the I2C bus using the System Management Bus (smbus) python library.
+
+Note: The labeling on the DockerPi relay board appears to backwards.  The left-most terminal
+labeled "NC" behaves like normally open (activating the relay closes the circuit allowing
+current to flow) and the right-most one labeled "NO" behaves like normally closed (current is
+flowing when relay is DEactivated, then stops when it is activated.).  Some of the comments
+on Amazon mention this as well.
 """
 import enum
 import logging
