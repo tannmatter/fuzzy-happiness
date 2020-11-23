@@ -39,7 +39,7 @@ from time import sleep
 
 from serial import Serial
 
-from drivers.switcher import SwitcherInterface
+from avctls.drivers.switcher import SwitcherInterface
 from utils import merge_dicts
 
 BUFF_SIZE = 2048
@@ -210,13 +210,13 @@ class KramerP3000(SwitcherInterface):
                 # ...and merge it with the default inputs, creating an Enum to hold them...
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="drivers.switcher.kramerp3000.KramerP3000.Input"
+                    module=__name__, qualname="avctls.drivers.switcher.kramerp3000.KramerP3000.Input"
                 )
             # ...or just use the defaults provided by the driver for testing
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,
-                    module=__name__, qualname="drivers.switcher.kramerp3000.KramerP3000.Input"
+                    module=__name__, qualname="avctls.drivers.switcher.kramerp3000.KramerP3000.Input"
                 )
 
             # Do the same with the outputs (useful only for matrix switching)
@@ -224,14 +224,14 @@ class KramerP3000(SwitcherInterface):
             if outputs and isinstance(outputs, dict):
                 self.outputs = enum.Enum(
                     value="Output", names=merge_dicts(outputs, self._default_outputs),
-                    module=__name__, qualname="drivers.switcher.kramerp3000.KramerP3000.Output"
+                    module=__name__, qualname="avctls.drivers.switcher.kramerp3000.KramerP3000.Output"
                 )
             # ...or once again use the default defined above, which has one output defined,
             # '*', meaning route to all outputs.
             else:
                 self.outputs = enum.Enum(
                     value="Output", names=self._default_outputs,
-                    module=__name__, qualname="drivers.switcher.kramerp3000.KramerP3000.Output"
+                    module=__name__, qualname="avctls.drivers.switcher.kramerp3000.KramerP3000.Output"
                 )
 
         except Exception as e:

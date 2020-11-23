@@ -36,7 +36,7 @@ from serial import Serial
 
 from utils import merge_dicts
 from utils.byteops import Byte
-from drivers.projector import ProjectorInterface
+from avctls.drivers.projector import ProjectorInterface
 
 BUFF_SIZE = 512
 
@@ -353,12 +353,12 @@ class NEC(ProjectorInterface):
             if inputs and isinstance(inputs, dict):
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="drivers.projector.nec.NEC.Input"
+                    module=__name__, qualname="avctls.drivers.projector.nec.NEC.Input"
                 )
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,
-                    module=__name__, qualname="drivers.projector.nec.NEC.Input"
+                    module=__name__, qualname="avctls.drivers.projector.nec.NEC.Input"
                 )
 
         except Exception as e:

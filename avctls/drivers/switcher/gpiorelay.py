@@ -15,7 +15,7 @@ import sys
 import time
 
 from utils import merge_dicts
-from drivers.switcher import SwitcherInterface
+from avctls.drivers.switcher import SwitcherInterface
 
 logger = logging.getLogger('GPIORelay')
 logger.setLevel(logging.DEBUG)
@@ -68,7 +68,7 @@ class GPIORelay(SwitcherInterface):
             if inputs is not None and isinstance(inputs, dict):
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="drivers.switcher.gpiorelay.GPIORelay.Input"
+                    module=__name__, qualname="avctls.drivers.switcher.gpiorelay.GPIORelay.Input"
                 )
                 # ensure that every pin we actually plan on using is set to OUT
                 # and all relays on the board DEACTIVATED.  (Avoid trying to config
@@ -80,7 +80,7 @@ class GPIORelay(SwitcherInterface):
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,
-                    module=__name__, qualname="drivers.switcher.gpiorelay.GPIORelay.Input"
+                    module=__name__, qualname="avctls.drivers.switcher.gpiorelay.GPIORelay.Input"
                 )
                 # same with default inputs
                 for k, v in self._default_inputs.items():

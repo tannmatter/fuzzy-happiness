@@ -10,7 +10,7 @@ import sys
 
 from serial import Serial
 
-from drivers.tv import TVInterface
+from avctls.drivers.tv import TVInterface
 from utils import merge_dicts
 RECVBUF = 2048
 
@@ -107,12 +107,12 @@ class SamsungExLink(TVInterface):
             if inputs and isinstance(inputs, dict):
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="drivers.tv.samsungexlink.SamsungExLink.Input"
+                    module=__name__, qualname="avctls.drivers.tv.samsungexlink.SamsungExLink.Input"
                 )
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,
-                    module=__name__, qualname="drivers.tv.samsungexlink.SamsungExLink.Input"
+                    module=__name__, qualname="avctls.drivers.tv.samsungexlink.SamsungExLink.Input"
                 )
 
         except Exception as e:

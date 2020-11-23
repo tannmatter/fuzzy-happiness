@@ -7,7 +7,7 @@ import sys
 
 from socket import socket, create_connection
 
-from drivers.projector import ProjectorInterface
+from avctls.drivers.projector import ProjectorInterface
 from utils import merge_dicts
 
 BUFF_SIZE = 512
@@ -163,12 +163,12 @@ class PJLink(ProjectorInterface):
                 if inputs and isinstance(inputs, dict):
                     self.inputs = enum.Enum(
                         value='Input', names=merge_dicts(inputs, self._default_inputs),
-                        module=__name__, qualname='drivers.projector.pjlink.PJLink.Input'
+                        module=__name__, qualname='avctls.drivers.projector.pjlink.PJLink.Input'
                     )
                 else:
                     self.inputs = enum.Enum(
                         value='Input', names=self._default_inputs,
-                        module=__name__, qualname='drivers.projector.pjlink.PJLink.Input'
+                        module=__name__, qualname='avctls.drivers.projector.pjlink.PJLink.Input'
                     )
             else:
                 raise UnboundLocalError('no IP address specified')

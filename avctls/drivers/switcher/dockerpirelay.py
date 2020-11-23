@@ -19,7 +19,7 @@ import smbus
 import sys
 
 from utils import merge_dicts
-from drivers.switcher import SwitcherInterface
+from avctls.drivers.switcher import SwitcherInterface
 
 logger = logging.getLogger('DockerPiRelay')
 logger.setLevel(logging.DEBUG)
@@ -70,12 +70,12 @@ class DockerPiRelay(SwitcherInterface):
             if inputs and isinstance(inputs, dict):
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="drivers.projector.dockerpirelay.DockerPiRelay.Input"
+                    module=__name__, qualname="avctls.drivers.projector.dockerpirelay.DockerPiRelay.Input"
                 )
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,
-                    module=__name__, qualname="drivers.projector.dockerpirelay.DockerPiRelay.Input"
+                    module=__name__, qualname="avctls.drivers.projector.dockerpirelay.DockerPiRelay.Input"
                 )
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)

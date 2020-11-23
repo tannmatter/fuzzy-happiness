@@ -14,7 +14,7 @@ to many different equipment combinations
 import abc
 from enum import Enum
 
-__all__ = ["TVInterface"]
+__all__ = ["TVInterface", "TV"]
 
 
 class TVInterface(metaclass=abc.ABCMeta):
@@ -63,3 +63,20 @@ class TVInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def select_input(self, input_: Input):
         raise NotImplementedError
+
+
+class TV:
+    """Wrapper class used by the application for template rendering"""
+    def __init__(self):
+        # Manufacturer/brand
+        self.make = ""
+
+        # Model # or series
+        self.model = ""
+
+        # Only inputs defined in the config will be saved here and
+        # passed into the template for rendering.
+        self.my_inputs = {}
+
+        # Driver object
+        self.interface = None

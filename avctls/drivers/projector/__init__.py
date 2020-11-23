@@ -1,9 +1,9 @@
-"""The drivers.switcher package contains drivers for various types and models of AV switchers.
-Each driver subclasses 'SwitcherInterface', defined here in this file (drivers/switcher/__init__.py).
+"""The drivers.projector package contains drivers for various types and models of projectors.
+Each driver subclasses 'ProjectorInterface', defined here in this file (drivers/projector/__init__.py).
 The interface is intended to be as generic as possible, supporting the minimum functionality provided
 by most devices of this type.
 
-The model-specific drivers are meant to be loaded dynamically by importlib, based on av system
+The model-specific drivers are meant to be loaded dynamically by importlib, based on AV system
 configuration details contained in a file or database.  The configuration data details
 what equipment is present, what driver it uses, what inputs it has, etc.
 
@@ -14,19 +14,21 @@ to many different equipment combinations
 import abc
 from enum import Enum
 
-__all__ = ["SwitcherInterface"]
+__all__ = ["ProjectorInterface", "Projector"]
 
 
-class SwitcherInterface(metaclass=abc.ABCMeta):
-    """A generic switcher control interface"""
+class ProjectorInterface(metaclass=abc.ABCMeta):
+    """A generic projector control interface"""
 
     @classmethod
     def __subclasshook__(cls, subclass):
         return (hasattr(subclass, 'power_on') and callable(subclass.power_on) and
                 hasattr(subclass, 'power_off') and callable(subclass.power_off) and
+                hasattr(subclass, 'power_toggle') and callable(subclass.power_toggle) and
                 hasattr(subclass, 'select_input') and callable(subclass.select_input) and
                 hasattr(subclass, 'power_status') and
                 hasattr(subclass, 'input_status') and
+                hasattr(subclass, 'errors') and
                 hasattr(subclass, 'av_mute')
                 )
 
@@ -50,12 +52,22 @@ class SwitcherInterface(metaclass=abc.ABCMeta):
     class Command(Enum):
         pass
 
+    class Lamp(Enum):
+        pass
+
+    class LampInfo(Enum):
+        pass
+
     @abc.abstractmethod
-    def power_on(self) -> None:
+    def power_on(self) -> bool:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def power_off(self) -> None:
+    def power_off(self) -> bool:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def power_toggle(self) -> bool:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -64,7 +76,7 @@ class SwitcherInterface(metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def power_status(self) -> bool:
+    def power_status(self) -> str:
         raise NotImplementedError
 
     @property
@@ -76,3 +88,25 @@ class SwitcherInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def av_mute(self) -> bool:
         raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def errors(self) -> list:
+        raise NotImplementedError
+
+
+class Projector:
+    """Wrapper class used by the application for template rendering"""
+    def __init__(self):
+        # Manufacturer/brand
+        self.make = ""
+
+        # Model # or series
+        self.model = ""
+
+        # Only inputs defined in the config will be saved here and
+        # passed into the template for rendering.
+        self.my_inputs = {}
+
+        # Driver object
+        self.interface = None

@@ -46,7 +46,7 @@ from time import sleep
 
 from serial import Serial
 
-from drivers.switcher import SwitcherInterface
+from avctls.drivers.switcher import SwitcherInterface
 from utils import merge_dicts
 BUFF_SIZE = 2048
 
@@ -431,12 +431,12 @@ class KramerVP734(SwitcherInterface):
             if inputs and isinstance(inputs, dict):
                 self.inputs = enum.Enum(
                     value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="drivers.switcher.kramervp734.KramerVP734.Input"
+                    module=__name__, qualname="avctls.drivers.switcher.kramervp734.KramerVP734.Input"
                 )
             else:
                 self.inputs = enum.Enum(
                     value="Input", names=self._default_inputs,
-                    module=__name__, qualname="drivers.switcher.kramervp734.KramerVP734.Input"
+                    module=__name__, qualname="avctls.drivers.switcher.kramervp734.KramerVP734.Input"
                 )
 
         except Exception as e:
