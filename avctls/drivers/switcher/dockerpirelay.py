@@ -12,13 +12,12 @@ current to flow) and the right-most one labeled "NO" behaves like normally close
 flowing when relay is DEactivated, then stops when it is activated.).  Some of the comments
 on Amazon mention this as well.
 """
-import enum
 import logging
 import time
 import smbus
 import sys
 
-from utils import merge_dicts
+from utils import merge_dicts, key_for_value
 from avctls.drivers.switcher import SwitcherInterface
 
 logger = logging.getLogger('DockerPiRelay')
@@ -37,11 +36,23 @@ logger.addHandler(file_handler)
 
 
 class DockerPiRelay(SwitcherInterface):
-    """For the DockerPi series relay hat from 52Pi."""
+    """For the DockerPi series relay hat from 52Pi.
 
-    """Default inputs for switching
-    These are mostly here for documentation and testing as inputs should ideally be
-    passed to __init__ by the application."""
+    Class attributes:
+    ----------------
+        _default_inputs dict[str, int]
+            Default mapping of input names to relay numbers.
+
+    Instance attributes:
+    -------------------
+        _activate_duration float
+            Length of time (in seconds) to close the circuit, triggering the switcher
+            to select the corresponding input connected to it.  Default is 0.3 seconds.
+        _default_input str
+            The default input to select (if any) after setup is done.
+
+    """
+
     _default_inputs = {
         '1': 0x01,
         '2': 0x02,
@@ -49,16 +60,19 @@ class DockerPiRelay(SwitcherInterface):
         '4': 0x04
     }
 
-    def __init__(self, device_bus=1, device_addr=0x10, inputs: dict = None, duration=0.3):
-        """Constructor
+    def __init__(self, device_bus=1, device_addr=0x10, inputs: dict = None, duration=0.3, default_input=None):
+        """Initialize the driver
 
         :param int device_bus: i2c device bus.
             Default is 1.
         :param int device_addr: i2c device address.  Valid values are 0x10 - 0x13.
             Default is 0x10.
-        :param dict inputs: Dictionary of input labels & values
+        :param dict inputs: Custom mapping of input names to relay numbers.
+            Mapping should be {str, int}.
+            If None, a default mapping is used.
         :param float duration: Duration of relay activation in seconds.
             Default is 0.3
+        :param str default_input: The default input (if any) to select after setup.
         """
         try:
             self._DEVICE_BUS = device_bus
@@ -66,17 +80,16 @@ class DockerPiRelay(SwitcherInterface):
             self._bus = smbus.SMBus(device_bus)
             self._selected_input = None
             self._activate_duration = duration
+            self._default_input = default_input
+            if default_input:
+                self.select_input(default_input)
 
+            # get custom input mapping
             if inputs and isinstance(inputs, dict):
-                self.inputs = enum.Enum(
-                    value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="avctls.drivers.projector.dockerpirelay.DockerPiRelay.Input"
-                )
+                self.inputs = merge_dicts(inputs, self._default_inputs)
             else:
-                self.inputs = enum.Enum(
-                    value="Input", names=self._default_inputs,
-                    module=__name__, qualname="avctls.drivers.projector.dockerpirelay.DockerPiRelay.Input"
-                )
+                self.inputs = self._default_inputs
+
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
             sys.exit(1)
@@ -84,33 +97,34 @@ class DockerPiRelay(SwitcherInterface):
     def __del__(self):
         try:
             # try to make sure all relays get powered off on shutdown
-            for k, v in self._default_inputs.items():
+            for k, v in self.inputs.items():
                 self._bus.write_byte_data(self._DEVICE_ADDR, v, 0x00)
         except Exception as e:
             logger.error('__del__(): Exception occurred on cleanup: {}'.format(e.args))
 
-    def select_input(self, input_: str = '1'):
+    def select_input(self, input_name: str = '1'):
         """Switch inputs
 
-        :param str input_: Name of input to select
-        :rtype DockerPiRelay.Input
-        :return Input object selected
+        :param str input_name: Name of the input to switch to
+        :rtype str
+        :return Name of the input switched to if no errors occurred.  Name will be
+            the one provided in the configuration if present, otherwise it will be the
+            driver default name for the input terminal.
         """
         try:
-            input_enum = self.inputs[input_]
-            val = input_enum.value
-            logger.debug("selecting input :'{}'".format(self.inputs[input_]))
-            self._bus.write_byte_data(self._DEVICE_ADDR, val, 0xFF)
+            input_value = self.inputs[input_name]
+            logger.debug("Selecting input '{}' on relay {}".format(input_name, input_value))
+            self._bus.write_byte_data(self._DEVICE_ADDR, input_value, 0xFF)
             time.sleep(self._activate_duration)
-            self._bus.write_byte_data(self._DEVICE_ADDR, val, 0x00)
+            self._bus.write_byte_data(self._DEVICE_ADDR, input_value, 0x00)
 
         except Exception as e:
             logger.error('select_input(): Exception occurred: {}'.format(e.args))
             raise e
 
         else:
-            self._selected_input = input_enum
-            return input_enum
+            self._selected_input = key_for_value(self.inputs, input_value)
+            return self._selected_input
 
     @property
     def input_status(self):

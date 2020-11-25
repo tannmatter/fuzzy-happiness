@@ -27,14 +27,13 @@ One exception is the "[037. INFORMATION REQUEST]" command detailed on page 32.
 It's returned data starts at byte 6.
 """
 
-import enum
 import logging
 import sys
 from socket import socket, create_connection
 
 from serial import Serial
 
-from utils import merge_dicts
+from utils import merge_dicts, key_for_value
 from utils.byteops import Byte
 from avctls.drivers.projector import ProjectorInterface
 
@@ -59,28 +58,31 @@ class NEC(ProjectorInterface):
     """A generic NEC projector driver based on the NEC control command manual,
     revision 7.1 dated April 16, 2020 and supplementary command information,
     revision 20.0.  For controlling NEC projectors over ethernet or RS-232.
+
+    Class attributes:
+    ----------------
+        _default_inputs dict[str, str]
+            Default mapping of input names to input codes obtained from the manual.
+            See supplementary information regarding [018. INPUT SW CHANGE],
+            Appendix pp. 18-22.
     """
 
-    """Default inputs for switching.
-    See supplementary information regarding [018. INPUT SW CHANGE], Appendix pp. 18-22
-    These are mostly here for documentation and testing as inputs should ideally be
-    passed to __init__ by the application."""
     _default_inputs = {
-        "RGB_1": b'\x01',
-        "RGB_2": b'\x02',
-        "RGB_3": b'\x03',
-        "HDMI_1": b'\x1a',
-        "HDMI_1_ALT": b'\xa1',  # On some models HDMI is '0x1a' and some it's '0xa1'...
-        "HDMI_2": b'\x1b',
-        "HDMI_2_ALT": b'\xa2',
-        "VIDEO_1": b'\x06',
-        "VIDEO_2": b'\x0b',
-        "VIDEO_3": b'\x10',
-        "DISPLAYPORT": b'\xa6',
-        "DISPLAYPORT_ALT": b'\x1b',
-        "USB_VIEWER_A": b'\x1f',
-        "USB_VIEWER_B": b'\x22',
-        "NETWORK": b'\x20'
+        "RGB_1": '\x01',
+        "RGB_2": '\x02',
+        "RGB_3": '\x03',
+        "HDMI_1": '\x1a',
+        "HDMI_1_ALT": '\xa1',  # On some models HDMI is '0x1a' and some it's '0xa1'...
+        "HDMI_2": '\x1b',
+        "HDMI_2_ALT": '\xa2',
+        "VIDEO_1": '\x06',
+        "VIDEO_2": '\x0b',
+        "VIDEO_3": '\x10',
+        "DISPLAYPORT": '\xa6',
+        "DISPLAYPORT_ALT": '\x1b',
+        "USB_VIEWER_A": '\x1f',
+        "USB_VIEWER_B": '\x22',
+        "NETWORK": '\x20'
     }
 
     class Comms(ProjectorInterface.Comms):
@@ -326,7 +328,8 @@ class NEC(ProjectorInterface):
             (if comm_method=='serial').
         :param float serial_timeout: Read timeout for serial operations.
             (if comm_method=='serial').
-        :param dict inputs: Dictionary of custom input labels & values
+        :param dict inputs: Custom mapping of input names to byte values.
+            Mapping should be {str, str}.  If None, a default mapping is used.
         """
         self.comms = self.Comms()
 
@@ -350,16 +353,11 @@ class NEC(ProjectorInterface):
             else:
                 raise ValueError("comm_method should be 'tcp' or 'serial'")
 
+            # get custom input mapping
             if inputs and isinstance(inputs, dict):
-                self.inputs = enum.Enum(
-                    value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="avctls.drivers.projector.nec.NEC.Input"
-                )
+                self.inputs = merge_dicts(inputs, self._default_inputs)
             else:
-                self.inputs = enum.Enum(
-                    value="Input", names=self._default_inputs,
-                    module=__name__, qualname="avctls.drivers.projector.nec.NEC.Input"
-                )
+                self.inputs = self._default_inputs
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
@@ -378,7 +376,7 @@ class NEC(ProjectorInterface):
     def __checksum(vals):
         """Calculate a one-byte checksum of all values
 
-        :param bytes|int vals: bytes or int to checksum
+        :param bytes or int vals: bytes or int to checksum
         :rtype: int
         :returns: checksum of vals
         """
@@ -388,26 +386,31 @@ class NEC(ProjectorInterface):
             return vals & 0xFF
 
     def __cmd(self, cmd=Command.STATUS, *params, checksum_required=False):
-        """Execute a command and return any output received
+        """Execute a command and return output
 
-        Executes a given command, optionally with parameters and a checksum
+        Executes a given command, optionally with parameters and a checksum,
         and returns any error codes received (errors are 2 bytes) or the full
         command output if an error did not appear to occur.
 
         :param NEC.Command cmd: command to execute
-        :param NEC.Input|NEC.Lamp|NEC.LampInfo params: additional parameters.
-            Default to None.
-        :param bool checksum_required: whether a checksum is required
-            Defaults to false.  If the command has parameters, it will need
-            to be checksummed.
-        :rtype: Tuple(int,int)|bytes
+        :param str or NEC.Lamp or NEC.LampInfo params: additional parameters.
+            Default is None.
+        :param bool checksum_required: whether or not a checksum is required.
+            Default is False.  If the command has parameters, this will need
+            to be True.
+        :rtype: Tuple(int,int) or bytes
         :returns: The error code if an error occurred, otherwise the entire
             response from the projector.
         """
         cmd_bytes = cmd.value
         if len(params) > 0:
             for p in params:
-                cmd_bytes += p.value
+                # input name passed
+                if isinstance(p, str):
+                    cmd_bytes += p.encode()
+                # LampInfo or Lamp enum passed
+                elif isinstance(p, self.LampInfo) or isinstance(p, self.Lamp):
+                    cmd_bytes += p.value
             if checksum_required:
                 cmd_bytes += bytes([self.__checksum(cmd_bytes)])
 
@@ -516,11 +519,13 @@ class NEC(ProjectorInterface):
                 return False
 
     def get_input_status(self):
-        """Return the current input terminal
+        """Get the current input terminal
 
-        :rtype: NEC.Input
-        :returns: NEC.Input member representing the currently selected input terminal.
-            If it's unable to determine the input, a ValueError is raised.
+        :rtype: str
+        :returns: Name of the input currently shown.  If it's unable to determine
+            this reliably, a ValueError is raised.  Name will the be the one provided
+            in the configuration if present there, otherwise it will be the the driver
+            default name for the input terminal.
         """
         try:
             data = self.__cmd(cmd=self.Command.STATUS)
@@ -544,6 +549,7 @@ class NEC(ProjectorInterface):
                     # So we'll have to give it our best guess...
 
                     # input_group (first number) should ordinarily be 0x01, 0x02, or 0x03
+                    # if it's 0x04 or 0x05, we're on one of the viewer or LAN inputs
                     input_group = data[8]
 
                     guess = ''
@@ -564,11 +570,10 @@ class NEC(ProjectorInterface):
                     elif "Viewer" in input_string or "SLOT" in input_string or "APPS" in input_string:
                         guess = 'USB_VIEWER_A'
 
-                    # Check whether our guess is one of the legitimate keys
-                    if guess in self.inputs.__members__.keys():
-                        # Close as we're going to get
-                        best_guess = self.inputs[guess]
-                        return best_guess
+                    # The only way this fails is if NEC updates the spec in the future, which they
+                    # will, eventually, but hopefully not in a way that completely breaks this.
+                    if guess in self.inputs:
+                        return key_for_value(self.inputs, self.inputs[guess])
                     else:
                         raise ValueError('get_input_status(): unable to reliably determine input from values: {}\n'
                                          'Maybe your documentation is out of date?'.format(vals))
@@ -581,14 +586,13 @@ class NEC(ProjectorInterface):
         return self.get_input_status()
 
     def select_input(self, input_name):
-        """Switch input terminals
+        """Switch to an input terminal
 
-        Switches to a different input terminal on the projector and returns the byte string
-        corresponding to the input we switched to if successful.
-
-        :param str input_name: the name of the input to select
-        :rtype: NEC.Input
-        :returns: The input selected if successful
+        :param str input_name: The name of the input to select
+        :rtype: str
+        :returns: Name of input selected if successful.  Name will be the one
+            provided in the configuration if present there, otherwise it will be
+            the driver default name for the input terminal.
         """
         try:
             data = self.__cmd(self.Command.SWITCH_INPUT, self.inputs[input_name], checksum_required=True)
@@ -596,13 +600,13 @@ class NEC(ProjectorInterface):
                 if len(data) == 2:
                     raise Exception(data, 'An error occurred: ' + self.cmd_errors[data])
                 else:
-                    return self.inputs[input_name]
+                    return key_for_value(self.inputs, self.inputs[input_name])
         except Exception as e:
             logger.error('Exception: {}'.format(e.args))
             raise e
 
     def get_errors(self) -> list:
-        """Return information about any errors the projector is reporting
+        """Get information about any errors the projector is reporting
 
         :rtype: list[str]
         :returns: A list of error messages
@@ -629,7 +633,7 @@ class NEC(ProjectorInterface):
         return self.get_errors()
 
     def get_lamp_info(self, lamp=Lamp.LAMP_1) -> dict:
-        """Return the specified lamp's usage hours and estimated remaining life (%).
+        """Get the specified lamp's usage hours and estimated remaining life (%).
 
         :param NEC.Lamp lamp: the lamp to check
 

@@ -18,7 +18,8 @@ __all__ = ["TVInterface", "TV"]
 
 
 class TVInterface(metaclass=abc.ABCMeta):
-    """A generic TV control interface"""
+    """A generic TV control interface
+    """
 
     @classmethod
     def __subclasshook__(cls, subclass):
@@ -66,17 +67,28 @@ class TVInterface(metaclass=abc.ABCMeta):
 
 
 class TV:
-    """Wrapper class used by the application for template rendering"""
-    def __init__(self):
-        # Manufacturer/brand
-        self.make = ""
+    """Wrapper class used by the application to pass data to templates
 
-        # Model # or series
-        self.model = ""
-
-        # Only inputs defined in the config will be saved here and
-        # passed into the template for rendering.
-        self.my_inputs = {}
-
-        # Driver object
-        self.interface = None
+    Instance attributes:
+        make: str
+            Manufacturer/brand
+        model: str
+            Model number or series
+        my_inputs: dict
+            Input assignments specified in the application's configuration
+            (and only those specified in the configuration) are mapped here.
+            This allows the application to render input controls for only
+            those input terminals that are actually connected to equipment,
+            while ignoring the driver defaults.
+        interface: TVInterface
+            The device's driver
+    """
+    def __init__(self, make=None, model=None, my_inputs=None, interface=None, default_input=None):
+        self.make = make
+        self.model = model
+        if not my_inputs:
+            self.my_inputs = {}
+        else:
+            self.my_inputs = my_inputs
+        self.interface = interface
+        self.default_input = default_input

@@ -4,14 +4,13 @@ Samsung proprietary USB serial adapter.  (https://imgur.com/a/Gka3r/)
 Ordinary USB UARTs will NOT work.  Older TVs had 3.5mm plugs.
 """
 
-import enum
 import logging
 import sys
 
 from serial import Serial
 
 from avctls.drivers.tv import TVInterface
-from utils import merge_dicts
+from utils import merge_dicts, key_for_value
 RECVBUF = 2048
 
 logger = logging.getLogger('SamsungExLink')
@@ -31,26 +30,31 @@ logger.addHandler(file_handler)
 
 class SamsungExLink(TVInterface):
     """For Samsung TVs with RS-232 control only.
+
+    Class attributes:
+    ----------------
+        _default_inputs dict[str, str]
+            Default mapping of input names to input codes.
     """
 
     _default_inputs = {
-        "TV": b'\x00\x00',
-        "VIDEO_1": b'\x01\x00',
-        "VIDEO_2": b'\x01\x01',
-        "VIDEO_3": b'\x01\x02',
-        "SVIDEO_1": b'\x02\x00',
-        "SVIDEO_2": b'\x02\x01',
-        "SVIDEO_3": b'\x02\x02',
-        "COMPONENT_1": b'\x03\x00',
-        "COMPONENT_2": b'\x03\x01',
-        "COMPONENT_3": b'\x03\x02',
-        "RGB_1": b'\x04\x00',
-        "RGB_2": b'\x04\x01',
-        "RGB_3": b'\x04\x02',
-        "HDMI_1": b'\x05\x00',
-        "HDMI_2": b'\x05\x01',
-        "HDMI_3": b'\x05\x02',
-        "HDMI_4": b'\x05\x03'
+        "TV": '\x00\x00',
+        "VIDEO_1": '\x01\x00',
+        "VIDEO_2": '\x01\x01',
+        "VIDEO_3": '\x01\x02',
+        "SVIDEO_1": '\x02\x00',
+        "SVIDEO_2": '\x02\x01',
+        "SVIDEO_3": '\x02\x02',
+        "COMPONENT_1": '\x03\x00',
+        "COMPONENT_2": '\x03\x01',
+        "COMPONENT_3": '\x03\x02',
+        "RGB_1": '\x04\x00',
+        "RGB_2": '\x04\x01',
+        "RGB_3": '\x04\x02',
+        "HDMI_1": '\x05\x00',
+        "HDMI_2": '\x05\x01',
+        "HDMI_3": '\x05\x02',
+        "HDMI_4": '\x05\x03'
     }
 
     class Command(TVInterface.Command):
@@ -97,6 +101,14 @@ class SamsungExLink(TVInterface):
                 return self.connection.read(size)
 
     def __init__(self, device='/dev/ttyUSB0', baudrate=9600, timeout=0.1, inputs: dict = None):
+        """Constructor
+
+        :param str device: Serial device to use.
+        :param int baudrate: Serial baudrate
+        :param float timeout: Read timeout for serial operations.
+        :param dict inputs: Custom mapping of input names to string values.
+            Mapping should be {str, str}.  If None, a default input mapping is used.
+        """
         try:
             self.comms = self.Comms()
             self.comms.device = device
@@ -104,16 +116,11 @@ class SamsungExLink(TVInterface):
             self.comms.timeout = timeout
             self.comms.connection = Serial(port=device, baudrate=baudrate, timeout=timeout)
 
+            # get custom input mapping
             if inputs and isinstance(inputs, dict):
-                self.inputs = enum.Enum(
-                    value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="avctls.drivers.tv.samsungexlink.SamsungExLink.Input"
-                )
+                self.inputs = merge_dicts(inputs, self._default_inputs)
             else:
-                self.inputs = enum.Enum(
-                    value="Input", names=self._default_inputs,
-                    module=__name__, qualname="avctls.drivers.tv.samsungexlink.SamsungExLink.Input"
-                )
+                self.inputs = self._default_inputs
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
@@ -143,12 +150,17 @@ class SamsungExLink(TVInterface):
         and the result is checksummed and sent to the TV.
 
         :param SamsungExLink.Command cmd: Command to send.
-        :param bytes param: Additional command parameter.
+        :param bytes or str or int param: Additional command parameter.
         """
         try:
             cmd_bytes = cmd.value
             if param:
-                cmd_bytes = cmd_bytes + param
+                if isinstance(param, bytes):
+                    cmd_bytes = cmd_bytes + param
+                elif isinstance(param, str):
+                    cmd_bytes = cmd_bytes + param.encode()
+                elif isinstance(param, int):
+                    cmd_bytes = cmd_bytes + str(param).encode()
 
             cmd_bytes = cmd_bytes + self.__checksum(cmd_bytes)
             if isinstance(self.comms.connection, Serial):
@@ -174,25 +186,32 @@ class SamsungExLink(TVInterface):
     def power_toggle(self):
         self.__cmd(self.Command.POWER_TOGGLE)
 
-    def select_input(self, input_: str):
+    def select_input(self, input_name: str):
         """Switch the TV's input
 
-        :param str input_: Name of the input to select
-        :return: None
+        :param str input_name: Name of the input to select
+
+        :rtype: str
+        :return: Name of input selected.  Name will be the one provided in
+            the configuration if present, otherwise it will be the driver
+            default name for the input terminal.
         """
         # The Samsung in my office seems to not mind me trying to select inputs it doesn't have.
         # (ex. HDMI 4 on a TV with only 3 HDMI inputs). It just says "Not available" on the screen
         # and goes back to the last valid input selected.
         try:
-            input_enum_val = self.inputs[input_].value
+            input_value = self.inputs[input_name]
         except KeyError as ke:
-            logger.error("select_input(): bad input '{}'".format(input_))
+            logger.error("select_input(): bad input '{}'".format(input_name))
             raise ke
-        # any other exception has already been logged.  just send it upward
+        # Any other exception has already been logged.  Just send it upward.
         except Exception as e:
             raise e
         else:
-            self.__cmd(self.Command.SELECT_INPUT, input_enum_val)
+            self.__cmd(self.Command.SELECT_INPUT, input_value.encode())
+            # We really have nothing to go on regarding whether this actually succeeded or not,
+            # but let's assume it did and return the proper response.
+            return key_for_value(self.inputs, input_value)
 
     def mute_toggle(self):
         self.__cmd(self.Command.KEY_MUTE)
@@ -203,7 +222,7 @@ class SamsungExLink(TVInterface):
     def channel_dn(self):
         self.__cmd(self.Command.KEY_CHAN_DN)
 
-    # what happens if we try a channel > 256?
+    # what happens if we try a channel >= 256?
     def channel_set(self, channel: int):
         self.__cmd(self.Command.KEY_CHAN_SET, bytes([channel]))
 

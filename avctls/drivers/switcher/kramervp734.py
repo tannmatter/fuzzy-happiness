@@ -24,7 +24,7 @@ At any rate, RS232 is the preferred method of communication for multiple reasons
 3) I've had major issues with timeouts and other quirks with this switcher.
 
 Quirks include:
-I had to increase the timeout to 2.0 seconds to avoid timing out too often.
+I had to increase the timeout to 2 seconds to avoid timing out too often.
 I'm probably doing something stupid but I don't know what it is, as I don't
 have much experience with socket programming.  Also, when switching the device
 off over ethernet, it seems to lose it's connection.  Attempts to  turn
@@ -37,7 +37,6 @@ a different address, indicating that the original had been handed out to
 somebody else, probably hours earlier.
 """
 
-import enum
 import logging
 import select
 from socket import socket, create_connection
@@ -47,7 +46,7 @@ from time import sleep
 from serial import Serial
 
 from avctls.drivers.switcher import SwitcherInterface
-from utils import merge_dicts
+from utils import merge_dicts, key_for_value
 BUFF_SIZE = 2048
 
 logger = logging.getLogger('KramerVP734')
@@ -67,11 +66,13 @@ logger.addHandler(file_handler)
 
 class KramerVP734(SwitcherInterface):
     """Specifically for the Kramer VP-734 presentation switcher.
-    Works over RS232 or ethernet, with RS232 preferred for reliability"""
+    Works over RS232 or ethernet, with RS232 preferred for reliability.
 
-    """Default inputs for switching
-    These are mostly here for documentation and testing as inputs should ideally be
-    passed to __init__ by the application."""
+    Class attributes:
+    ----------------
+        _default_inputs dict[str, int]
+            Default mapping of input names to input numbers.
+    """
     _default_inputs = {
         "RGB_1": 0,
         "RGB_2": 1,
@@ -407,7 +408,7 @@ class KramerVP734(SwitcherInterface):
             Default is 5000.
         :param float tcp_timeout: Timeout for socket operations (if comm_method=='tcp').
             Default is 2.0. (Lesser values have been problematic with this device.)
-        :param dict inputs: Dictionary of custom input labels & values.
+        :param dict inputs: Custom mapping of input names to numbers.
         """
         try:
             self._power_status = None
@@ -428,16 +429,11 @@ class KramerVP734(SwitcherInterface):
                 self.comms.tcp_timeout = tcp_timeout
                 self.comms.connection = create_connection((ip_address, port), timeout=tcp_timeout)
 
+            # get custom input mapping
             if inputs and isinstance(inputs, dict):
-                self.inputs = enum.Enum(
-                    value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="avctls.drivers.switcher.kramervp734.KramerVP734.Input"
-                )
+                self.inputs = merge_dicts(inputs, self._default_inputs)
             else:
-                self.inputs = enum.Enum(
-                    value="Input", names=self._default_inputs,
-                    module=__name__, qualname="avctls.drivers.switcher.kramervp734.KramerVP734.Input"
-                )
+                self.inputs = self._default_inputs
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
@@ -489,7 +485,11 @@ class KramerVP734(SwitcherInterface):
                     self.parse(response.decode())
 
     def parse(self, data: str):
-        """Parse a response and set internal state
+        """Parse response and set internal state
+
+        Parses a response, watching for updates to video mute status,
+        power status, and input selection status.  If the logger is set
+        to debug, also logs each response as well as its meaning, if known.
 
         :param str data: Data read from the serial device or socket
         """
@@ -559,14 +559,15 @@ class KramerVP734(SwitcherInterface):
                     # Set response: 'Z 0 10 [0|1]' / Get response: 'Z 1 10 0' or simply '-'.
                     # (We will only see 'Z 1 10' in the get response if the power is currently off.
                     # For whatever reason if the power is on it simply returns '-'.
-                    # We check for that response in a special case below.)
+                    # We check for that response in a special case below.
+                    # So effectively, we could just write `self._power_status = False` here.)
                     elif func == 10:
                         self._power_status = bool(param)
 
                     # Input set command ('Y 0 30 [0-6]') / get command ('Y 1 30')
                     # Set response: 'Z 0 30 [0-6]' / Get response: 'Z 1 30 [0-6]'
                     elif func == 30:
-                        self._input_status = self.inputs(param)
+                        self._input_status = key_for_value(self.inputs, param)
 
                     return
                 # ... otherwise, just log the function name along with the bare value of param.
@@ -627,13 +628,13 @@ class KramerVP734(SwitcherInterface):
         finally:
             self.close_connection()
 
-    def select_input(self, input_: str):
-        logger.debug('select_input({}) called'.format(input_))
+    def select_input(self, input_name: str):
+        logger.debug('select_input({}) called'.format(input_name))
         try:
-            if input_ in self.inputs.__members__:
+            if input_name in self.inputs:
                 self.open_connection()
-                input_enum_val = self.inputs[input_].value
-                cmd = b'Y 0 30 ' + bytes(str(input_enum_val), 'ascii') + b'\r'
+                input_value = self.inputs[input_name]
+                cmd = b'Y 0 30 ' + str(input_value).encode() + b'\r'
                 logger.debug('sending: {}'.format(cmd))
                 self.comms.send(cmd)
                 sleep(1.0)
@@ -643,7 +644,7 @@ class KramerVP734(SwitcherInterface):
             else:
                 raise KeyError
         except KeyError as ke:
-            logger.error('select_input(): bad input {}'.format(input_))
+            logger.error('select_input(): bad input {}'.format(input_name))
             raise ke
         except Exception as e:
             logger.error('select_input(): Exception occurred: {}'.format(e.args), exc_info=True)

@@ -33,14 +33,13 @@ import re
 import select
 import sys
 
-from enum import Enum
 from socket import socket, create_connection
 from time import sleep
 
 from serial import Serial
 
 from avctls.drivers.switcher import SwitcherInterface
-from utils import merge_dicts
+from utils import merge_dicts, key_for_value
 
 BUFF_SIZE = 2048
 
@@ -62,7 +61,16 @@ logger.addHandler(file_handler)
 class KramerP3000(SwitcherInterface):
     """Kramer Protocol 3000.  Can control devices with numbered inputs & outputs
     over RS232 or ethernet.  Won't work on switchers using long format names for
-    inputs/outputs (like 'IN.HDMI.1') without modification.
+    inputs/outputs (like 'IN.HDMI.1') without slight modifications.
+
+    Class attributes:
+    ----------------
+        _default_inputs dict[str, str]
+            Default mapping of input names to input values.
+
+        _default_outputs dict[str, str]
+            Default mapping of output names to output values.
+            Consists of one output by default: '*', meaning all outputs.
     """
 
     _default_inputs = {
@@ -74,7 +82,7 @@ class KramerP3000(SwitcherInterface):
         'ALL': '*'
     }
 
-    class Error(Enum):
+    class Error(enum.Enum):
         """Error regexes.  Varying by device, error codes may or may not contain one or more spaces
         between 'ERR' and the code number.
         """
@@ -181,11 +189,13 @@ class KramerP3000(SwitcherInterface):
             Default is 0.25
         :param str ip_address: IP address of the device (if comm_method=='tcp').
         :param int port: Port number to connect to (if comm_method=='tcp').
-        :param dict inputs: Dictionary of custom input labels and values.
-            If None, the defaults are used.
-        :param dict outputs: Dictionary of custom output labels & values.
-            More than 1 output indicates it's a matrix switcher.
-            If None, the defaults are used.
+        :param dict inputs: Custom mapping of input names to input values.
+            Mapping should be {str, str}.
+            If None, a default mapping is used.
+        :param dict outputs: Custom mapping of output names to output values.
+            (Having more than one output indicates it's a matrix switcher.)
+            Mapping should be {str, str}.
+            If None, the default '*' is used, meaning route to all outputs.
         """
         try:
             if comm_method == 'serial':
@@ -204,35 +214,19 @@ class KramerP3000(SwitcherInterface):
                 self.comms.connection.setblocking(False)
                 self.comms.connection.close()
 
-            # Take an optional dictionary of custom input labels & values...
-            # ie. {'COMPUTER': b'1', 'APPLE_TV': b'2'...}
+            # get custom input mapping
+            # ie. {'COMPUTER': '1', 'APPLE_TV': '2'...}
             if inputs and isinstance(inputs, dict):
-                # ...and merge it with the default inputs, creating an Enum to hold them...
-                self.inputs = enum.Enum(
-                    value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="avctls.drivers.switcher.kramerp3000.KramerP3000.Input"
-                )
-            # ...or just use the defaults provided by the driver for testing
+                self.inputs = merge_dicts(inputs, self._default_inputs)
             else:
-                self.inputs = enum.Enum(
-                    value="Input", names=self._default_inputs,
-                    module=__name__, qualname="avctls.drivers.switcher.kramerp3000.KramerP3000.Input"
-                )
+                self.inputs = self._default_inputs
 
-            # Do the same with the outputs (useful only for matrix switching)
-            # ie. {'LEFT_TV': b'1', 'RIGHT_TV': b'2'...}
+            # get custom output mapping (useful only for matrix switching)
+            # ie. {'LEFT_TV': '1', 'RIGHT_TV': '2'...}
             if outputs and isinstance(outputs, dict):
-                self.outputs = enum.Enum(
-                    value="Output", names=merge_dicts(outputs, self._default_outputs),
-                    module=__name__, qualname="avctls.drivers.switcher.kramerp3000.KramerP3000.Output"
-                )
-            # ...or once again use the default defined above, which has one output defined,
-            # '*', meaning route to all outputs.
+                self.outputs = merge_dicts(outputs, self._default_outputs)
             else:
-                self.outputs = enum.Enum(
-                    value="Output", names=self._default_outputs,
-                    module=__name__, qualname="avctls.drivers.switcher.kramerp3000.KramerP3000.Output"
-                )
+                self.outputs = self._default_outputs
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
@@ -288,26 +282,30 @@ class KramerP3000(SwitcherInterface):
         else:
             return response
 
-    def select_input(self, input_='1', output='ALL'):
+    def select_input(self, input_name='1', output_name='ALL'):
         """Select an input to route to the specified output
 
         Tries several Protocol 3000 routing/switching commands in order until one succeeds:
         #ROUTE, #AV, or #VID.
 
-        :param str input_: Name of input to route.
+        :param str input_name: Name of input to route.
             Default is '1'.
-        :param str output: Name of output to route to.
+        :param str output_name: Name of output to route to.
             Default is 'ALL'.
-        :rtype: KramerP3000.Input
-        :returns: The input selected if no errors are reported
+        :rtype: str
+        :returns: Name of input selected if no errors are reported.  Name will be the one
+            provided in the configuration if present there, otherwise it will be the driver
+            default name for the input terminal.
         """
         try:
-            in_value = self.inputs[input_].value
-            out_value = self.outputs[output].value
+            in_value = self.inputs[input_name]
+            out_value = self.outputs[output_name]
 
-            # AV I place before VID because if a device has separate routable audio & video,
+            # AV I placed before VID because if a device has separate routable audio & video,
             # we'd prefer to route them both together here.  Handling them separately is
             # way too complicated and beyond the scope of what we're trying to do.
+            # Since none of our switchers appear to support #AV, it means an extra half-second
+            # delay in our app, but oh well.
             try_in_order = [
                 '#ROUTE 1,{},{}\r'.format(out_value, in_value),
                 '#AV {}>{}\r'.format(in_value, out_value),
@@ -333,7 +331,7 @@ class KramerP3000(SwitcherInterface):
                                     format(response.decode()))
                 else:
                     # no errors reported, our command probably worked
-                    return self.inputs[input_]
+                    return key_for_value(self.inputs, self.inputs[input_name])
         except Exception as e:
             logger.error('select_input(): Exception occurred: {}'.format(e.args), exc_info=True)
             raise e
@@ -345,12 +343,13 @@ class KramerP3000(SwitcherInterface):
         """Get the input(s) assigned to our output(s)
 
         This tries to detect which inputs are routed to which outputs using a few different query commands.
-        Returns a list of input assignments. If the switcher only has a single output, the list will contain
-        a single value: the input routed to that output.
+        Returns a list of input names. If the switcher only has a single output, the list will contain
+        a single str: the name of the input routed to that output.
 
-        :rtype: list[KramerP3000.Input]
-        :returns: List of KramerP3000.Input members corresponding to the
-            current routing assignments for each output
+        :rtype: list[str]
+        :returns: List of names of inputs corresponding to the current routing assignments
+            for each output.  The names will be the ones provided in the configuration if
+            present there, otherwise they will be the driver default input terminal names.
         """
         try_in_order = [
             b'#ROUTE? 1,*\r',
@@ -386,8 +385,8 @@ class KramerP3000(SwitcherInterface):
                         for route in routes:
                             match = re.search(rb'~\d+@ROUTE\s+\d+,\d+,(\d+)', route)
                             if match:
-                                input_ = self.inputs(match.group(1).decode())
-                                inputs.append(input_)
+                                input_name = key_for_value(self.inputs, match.group(1).decode())
+                                inputs.append(input_name)
                         return inputs
                     elif b'VID' in response or b'AV' in response:
                         # If '#VID? *' worked, the result should look like:
@@ -402,8 +401,8 @@ class KramerP3000(SwitcherInterface):
                             for route in routes:
                                 route_match = re.search(rb'(\d+)>\d+', route)
                                 if route_match:
-                                    input_ = self.inputs(route_match.group(1).decode())
-                                    inputs.append(input_)
+                                    input_name = key_for_value(self.inputs, route_match.group(1).decode())
+                                    inputs.append(input_name)
                             return inputs
 
         except Exception as e:

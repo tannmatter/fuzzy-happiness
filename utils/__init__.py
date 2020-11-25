@@ -4,7 +4,7 @@ parts of the application
 
 
 def key_for_value(d: dict, value):
-    """Find the matching key for the given value in dict d"""
+    """Find the (first) matching key for the given value in dict d"""
     key_list = list(d.keys())
     value_list = list(d.values())
     return key_list[value_list.index(value)]

@@ -11,15 +11,20 @@ def index():
 @pj.route('/input')
 def input_status():
     status = current_app.room.pj.interface.input_status
-    # status is Input enum member
-    return status.name
+    return status
 
 
 @pj.route('/input/<inp>')
 def select_input(inp):
-    selected_input = current_app.room.pj.interface.select_input(inp)
-    # selected_input is Input enum member
-    return selected_input.name
+    status = current_app.room.pj.interface.select_input(inp)
+    return status
+
+
+# for debugging
+@pj.route('/inputs')
+def get_inputs():
+    inputs = current_app.room.pj.interface.inputs
+    return inputs
 
 
 @pj.route('/power')
@@ -31,8 +36,10 @@ def get_power_state():
 def set_power_state(state):
     projector = current_app.room.pj.interface
     if state == 'on' or state == '1':
-        return projector.power_on()
+        if projector.power_on():
+            return 'On'
     elif state == 'off' or state == '0':
-        return projector.power_off()
+        if projector.power_off():
+            return 'Off'
     else:
         return 'parameter {} invalid'.format(state)

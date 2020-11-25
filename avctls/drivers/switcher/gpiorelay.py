@@ -8,13 +8,12 @@ These are low-active relays driven by a Raspberry Pi's GPIO pins.
 
 As such, this driver needs to be tested on an actual Raspberry Pi.
 """
-import enum
 import RPi.GPIO as GPIO
 import logging
 import sys
 import time
 
-from utils import merge_dicts
+from utils import merge_dicts, key_for_value
 from avctls.drivers.switcher import SwitcherInterface
 
 logger = logging.getLogger('GPIORelay')
@@ -34,12 +33,23 @@ logger.addHandler(file_handler)
 
 class GPIORelay(SwitcherInterface):
     """Uses RPi.GPIO to control a relay which is connected to a switcher's contact closure block.
+
+    Class attributes:
+    ----------------
+        _default_inputs dict[str, int]
+            Default mapping of input names to BCM GPIO output pin numbers.
+
+    Instance attributes:
+    -------------------
+        _activate_duration float
+            Length of time (in seconds) to close the circuit, triggering the switcher
+            to select the corresponding input connected to it.  Default is 0.3 seconds.
+        _default_input str
+            The default input to select (if any) after setup is done.
+
     """
-    # the duration of 'pressing' the contacts together.  About .3 seconds seems to work well on our Kramers.
-    # .2 or less occasionally fails to trigger our VS-211UHD to change inputs
     _activate_duration = 0.3
 
-    # default mapping of relay inputs to BCM GPIO pins
     _default_inputs = {
         '1': 2,
         '2': 3,
@@ -47,12 +57,13 @@ class GPIORelay(SwitcherInterface):
         '4': 5
     }
 
-    def __init__(self, low_active=True, inputs=None, default_input=None):
+    def __init__(self, low_active=True, inputs=None, duration=0.3, default_input=None):
         """Initialize the driver
 
         :param bool low_active: Whether this relay switch uses low voltage (True) to activate
             or high voltage (False).
-        :param dict inputs: Dictionary of inputs labels & valeus.
+        :param dict inputs: Custom mapping of inputs names to BCM GPIO pins.
+            Mapping should be {str, int}.  If None, a default mapping is used.
         :param str default_input: The default input (if any) to select after setup
         """
         try:
@@ -65,29 +76,30 @@ class GPIORelay(SwitcherInterface):
 
             GPIO.setmode(GPIO.BCM)
 
-            if inputs is not None and isinstance(inputs, dict):
-                self.inputs = enum.Enum(
-                    value="Input", names=merge_dicts(inputs, self._default_inputs),
-                    module=__name__, qualname="avctls.drivers.switcher.gpiorelay.GPIORelay.Input"
-                )
+            # get custom input mapping
+            if inputs and isinstance(inputs, dict):
+                self.inputs = merge_dicts(inputs, self._default_inputs)
+
                 # ensure that every pin we actually plan on using is set to OUT
                 # and all relays on the board DEACTIVATED.  (Avoid trying to config
-                # the same pin twice)
+                # the same pin twice, that's why I separated these.)
                 for k, v in inputs.items():
                     GPIO.setup(v, GPIO.OUT)
                     GPIO.output(v, self.R_OFF)
 
             else:
-                self.inputs = enum.Enum(
-                    value="Input", names=self._default_inputs,
-                    module=__name__, qualname="avctls.drivers.switcher.gpiorelay.GPIORelay.Input"
-                )
+                self.inputs = self._default_inputs
+
                 # same with default inputs
                 for k, v in self._default_inputs.items():
                     GPIO.setup(v, GPIO.OUT)
                     GPIO.output(v, self.R_OFF)
 
             self._selected_input = None
+            self._activate_duration = duration
+
+            # if default input is specified, switch to it now
+            self._default_input = default_input
             if default_input:
                 self.select_input(default_input)
 
@@ -99,27 +111,29 @@ class GPIORelay(SwitcherInterface):
         logger.debug('Cleaning up GPIO state for shutdown...')
         GPIO.cleanup()
 
-    def select_input(self, input_: str = '1'):
+    def select_input(self, input_name: str = '1'):
         """Switch inputs
 
-        :param str input_: Name of the input to switch to
-        :rtype GPIORelay.Input
-        :return Input switched to if no errors occurred
+        :param str input_name: Name of the input to switch to
+        :rtype str
+        :return Name of the input switched to if no errors occurred.  Name will be
+            the one provided in the configuration if present, otherwise it will be the
+            driver default name for the input terminal.
         """
         try:
-            input_enum = self.inputs[input_]
-            logger.debug('Selecting input {} on GPIO {}'.format(input_, input_enum.value))
-            GPIO.output(input_enum.value, self.R_ON)
+            input_value = self.inputs[input_name]
+            logger.debug("Selecting input '{}' on GPIO {}".format(input_name, input_value))
+            GPIO.output(input_value, self.R_ON)
             time.sleep(self._activate_duration)
-            GPIO.output(input_enum.value, self.R_OFF)
+            GPIO.output(input_value, self.R_OFF)
 
         except Exception as e:
             logger.error('select_input(): Exception occurred: {}'.format(e.args))
             raise e
 
         else:
-            self._selected_input = input_enum
-            return input_enum
+            self._selected_input = key_for_value(self.inputs, input_value)
+            return self._selected_input
 
     @property
     def input_status(self):

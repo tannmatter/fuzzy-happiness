@@ -117,13 +117,13 @@ def setup_projector(room):
     if "inputs" in pj_sub_key:
         assert (isinstance(pj_sub_key['inputs'], dict)), "projector 'inputs' should be instance of dict"
         for key, value in pj_sub_key['inputs'].items():
-            value_str = ""
-            # Reinterprets any '\\x..' as '\x..'. Has no effect on values without backslashes
             if isinstance(value, str):
-                value_str = value.encode().decode('unicode_escape')
-            elif isinstance(value, bytes):
-                value_str = value.decode('unicode_escape')
-            pj.my_inputs.update({key: value_str})
+                if '\\' in value:
+                    # Reinterpret any "\\x.." as "\x.."
+                    decoded_value = value.encode().decode('unicode_escape')
+                    pj.my_inputs.update({key: decoded_value})
+                else:
+                    pj.my_inputs.update({key: value})
 
     # assume driver module is lowercase version of class name
     driver_module_name = driver_class_name.lower()
@@ -132,8 +132,10 @@ def setup_projector(room):
     # get the class name exported by the module, ie. class NEC in nec.py
     driver_class = getattr(driver_module, driver_class_name)
 
-    assert ("comm_method" in pj_sub_key), "No comm_method specified for projector"
-    comm_method = pj_sub_key['comm_method']
+    if "comm_method" in pj_sub_key:
+        comm_method = pj_sub_key['comm_method']
+    else:
+        comm_method = "tcp"
 
     # create our projector interface and initiate the connection
     pj.interface = None
