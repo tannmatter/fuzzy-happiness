@@ -392,7 +392,7 @@ class KramerVP734(SwitcherInterface):
     }
 
     def __init__(self, serial_device='/dev/ttyUSB0', serial_baudrate=115200, serial_timeout=0.5, comm_method='serial',
-                 ip_address=None, port=5000, tcp_timeout=2.0, inputs: dict = None):
+                 ip_address=None, port=5000, tcp_timeout=2.0, inputs: dict = None, default_input=None):
         """Constructor
 
         :param str serial_device: The serial device to use (if comm_method=='serial').
@@ -434,6 +434,10 @@ class KramerVP734(SwitcherInterface):
                 self.inputs = merge_dicts(inputs, self._default_inputs)
             else:
                 self.inputs = self._default_inputs
+
+            self._default_input = default_input
+            if default_input:
+                self.select_input(default_input)
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)

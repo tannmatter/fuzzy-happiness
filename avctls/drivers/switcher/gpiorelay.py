@@ -142,12 +142,12 @@ class GPIORelay(SwitcherInterface):
     def power_on(self):
         """Unsupported"""
         logger.debug("power_on(): operation not supported with this device")
-        return None
+        return True
 
     def power_off(self):
         """Unsupported"""
         logger.debug("power_off(): operation not supported with this device")
-        return None
+        return True
 
     @property
     def power_status(self):

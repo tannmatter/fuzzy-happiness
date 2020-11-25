@@ -173,7 +173,7 @@ class KramerP3000(SwitcherInterface):
                             data_available = False
 
     def __init__(self, serial_device='/dev/ttyUSB0', *, comm_method='serial', serial_baudrate=9600, serial_timeout=0.25,
-                 ip_address=None, port=5000, inputs: dict = None, outputs: dict = None):
+                 ip_address=None, port=5000, inputs: dict = None, outputs: dict = None, default_input=None):
         """Constructor
 
         The default means of communication is RS-232 serial.  After serial_device,
@@ -227,6 +227,10 @@ class KramerP3000(SwitcherInterface):
                 self.outputs = merge_dicts(outputs, self._default_outputs)
             else:
                 self.outputs = self._default_outputs
+
+            self._default_input = default_input
+            if default_input:
+                self.select_input(default_input)
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)

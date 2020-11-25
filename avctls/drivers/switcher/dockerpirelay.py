@@ -78,17 +78,18 @@ class DockerPiRelay(SwitcherInterface):
             self._DEVICE_BUS = device_bus
             self._DEVICE_ADDR = device_addr
             self._bus = smbus.SMBus(device_bus)
-            self._selected_input = None
-            self._activate_duration = duration
-            self._default_input = default_input
-            if default_input:
-                self.select_input(default_input)
 
             # get custom input mapping
             if inputs and isinstance(inputs, dict):
                 self.inputs = merge_dicts(inputs, self._default_inputs)
             else:
                 self.inputs = self._default_inputs
+
+            self._selected_input = None
+            self._activate_duration = duration
+            self._default_input = default_input
+            if default_input:
+                self.select_input(default_input)
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
@@ -133,12 +134,12 @@ class DockerPiRelay(SwitcherInterface):
     def power_on(self):
         """Unsupported"""
         logger.debug("power_on(): operation not supported with this device")
-        return None
+        return True
 
     def power_off(self):
         """Unsupported"""
         logger.debug("power_off(): operation not supported with this device")
-        return None
+        return True
 
     @property
     def power_status(self):

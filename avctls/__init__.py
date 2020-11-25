@@ -62,6 +62,10 @@ def create_app(test_config=None):
         from . import pj
         app.register_blueprint(pj.pj)
 
+    if app.room.sw:
+        from . import sw
+        app.register_blueprint(sw.sw)
+
     return app
 
 
@@ -79,14 +83,15 @@ def setup_room(app):
         pj = None
         if "projector" in room_config:
             pj = setup_projector(room_config)
-        # sw = None
-        # if "switcher" in room_config:
-        #    sw = setup_switcher(room_config)
+        sw = None
+        if "switcher" in room_config:
+            sw = setup_switcher(room_config)
         # tv = None
         # if "tv" in room_config:
         #    tv = setup_tv(room_config)
 
         room.pj = pj
+        room.sw = sw
 
         return room
     except Exception as e:
@@ -124,6 +129,10 @@ def setup_projector(room):
                     pj.my_inputs.update({key: decoded_value})
                 else:
                     pj.my_inputs.update({key: value})
+
+    # TODO: potential bug here.  what if "inputs" not in sub_key ?
+    # pj.my_inputs is defined as empty dict and is merged with <driver>._default_inputs
+    # is that a problem?
 
     # assume driver module is lowercase version of class name
     driver_module_name = driver_class_name.lower()
@@ -171,3 +180,77 @@ def setup_projector(room):
         raise Exception("Failed to instantiate projector control interface.")
 
     return pj
+
+
+def setup_switcher(room):
+    sw = Switcher()
+    sw_sub_key = room['switcher']
+
+    driver_class_name = None
+    if "driver" in sw_sub_key:
+        driver_class_name = sw_sub_key['driver']
+    elif "drivers" in sw_sub_key:
+        driver_class_name = sw_sub_key['drivers'][0]
+    else:
+        driver_class_name = "DockerPiRelay"
+
+    if "make" in sw_sub_key:
+        sw.make = sw_sub_key['make']
+    if "model" in sw_sub_key:
+        sw.model = sw_sub_key['model']
+
+    if "inputs" in sw_sub_key:
+        assert (isinstance(sw_sub_key['inputs'], dict)), "switcher 'inputs' should be instance of dict"
+        for key, value in sw_sub_key['inputs'].items():
+            sw.my_inputs.update({key: value})
+    if "default" in sw_sub_key['inputs']:
+        sw.default_input = sw_sub_key['inputs']['default']
+
+    driver_module_name = driver_class_name.lower()
+    driver_module = importlib.import_module("avctls.drivers.switcher." + driver_module_name)
+    driver_class = getattr(driver_module, driver_class_name)
+
+    if "comm_method" in sw_sub_key:
+        comm_method = sw_sub_key['comm_method']
+    else:
+        comm_method = None
+
+    sw.interface = None
+    if not comm_method:
+        # assume we are using one of the relay classes
+        sw.interface = driver_class(
+            inputs=sw.my_inputs,
+            default_input=sw.default_input
+        )
+    elif comm_method == 'serial':
+        assert ("serial_device" in sw_sub_key), "serial connection requested but no serial_device specified!"
+        baud_rate = 9600
+        if "serial_baudrate" in sw_sub_key:
+            baud_rate = sw_sub_key['serial_baudrate']
+        sw.interface = driver_class(
+            comm_method="serial",
+            serial_device=sw_sub_key['serial_device'],
+            serial_baudrate=baud_rate,
+            inputs=sw.my_inputs,
+            default_input=sw.default_input
+        )
+    elif comm_method == 'tcp':
+        assert ("ip_address" in sw_sub_key), "tcp connection requested but no ip_address specified!"
+        if "port" in sw_sub_key:
+            sw.interface = driver_class(
+                ip_address=sw_sub_key['ip_address'],
+                port=sw_sub_key['port'],
+                inputs=sw.my_inputs,
+                default_input=sw.default_input
+            )
+        else:
+            sw.interface = driver_class(
+                ip_address=sw_sub_key['ip_address'],
+                inputs=sw.my_inputs,
+                default_input=sw.default_input
+            )
+
+    if sw.interface is None:
+        raise Exception("Failed to instantiate AV switcher control interface.")
+
+    return sw
