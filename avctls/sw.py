@@ -2,6 +2,8 @@ from flask import Blueprint, render_template, current_app
 
 sw = Blueprint('sw', __name__, url_prefix='/sw')
 
+# todo: this isn't doing what i thought it would.  the routes are the same as the projector...
+# I thought url_prefix above would cause it to make to /sw/input, etc?
 
 @sw.route('/')
 def sw_index():
