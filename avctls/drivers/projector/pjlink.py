@@ -35,22 +35,22 @@ class PJLink(ProjectorInterface):
 
     Class attributes:
     ----------------
-        _default_inputs dict[str, str]
+        _default_inputs dict[str, bytes]
             Default mapping of input names to input codes obtained from the manual.
     """
     _default_inputs = {
-        "RGB_1": '11',
-        "RGB_2": '12',
-        "RGB_3": '13',
-        "VIDEO_1": '21',
-        "VIDEO_2": '22',
-        "VIDEO_3": '23',
-        "DIGITAL_1": '31',
-        "DIGITAL_2": '32',
-        "DIGITAL_3": '33',
-        "STORAGE_1": '41',
-        "STORAGE_2": '42',
-        "NETWORK": '51'
+        "RGB_1": b'11',
+        "RGB_2": b'12',
+        "RGB_3": b'13',
+        "VIDEO_1": b'21',
+        "VIDEO_2": b'22',
+        "VIDEO_3": b'23',
+        "DIGITAL_1": b'31',
+        "DIGITAL_2": b'32',
+        "DIGITAL_3": b'33',
+        "STORAGE_1": b'41',
+        "STORAGE_2": b'42',
+        "NETWORK": b'51'
     }
 
     class Comms(ProjectorInterface.Comms):
@@ -141,7 +141,8 @@ class PJLink(ProjectorInterface):
 
         :param str ip_address: IP address of the device
         :param int port: Port to connect to.  Defaults to 4352.
-        :param dict inputs: Custom mapping of input names to string values
+        :param dict inputs: Custom mapping of input names to byte values.
+            Mapping should be {str, bytes}.  If None, a default mapping is used.
         """
         self.comms = self.Comms()
         try:
@@ -189,8 +190,8 @@ class PJLink(ProjectorInterface):
         command output received.
 
         :param PJLink.Command cmd: The command to execute
-        :param str params: Additional parameters to the command.
-            In reality, this should only be a single string representing
+        :param bytes params: Additional parameters to the command.
+            In reality, this should only be a single bytes object representing
             an input terminal as select_input() is the only command with
             a parameter.
 
@@ -200,7 +201,10 @@ class PJLink(ProjectorInterface):
         cmd_str = cmd.value
         if len(params) > 0:
             for p in params:
-                cmd_str += p.encode()
+                if isinstance(p, bytes):
+                    cmd_str += p
+                elif isinstance(p, str):
+                    cmd_str += p.encode()
             # all commands end with carriage return
             cmd_str += b'\x0d'
 
@@ -331,14 +335,14 @@ class PJLink(ProjectorInterface):
         """
         try:
             result = self.__cmd(cmd=self.Command.INPUT_STATUS)
-            # result is '%1INPT=##\r' where ## is the input terminal
+            # result is b'%1INPT=##\r' where ## is the input terminal
             if result is not None:
                 if result.find(b'ERR') != -1:
                     raise Exception(result[7:11], 'An error occurred: ' + self.cmd_errors[result[7:11]])
                 else:
                     data = result[7:].rstrip()
-                    if data.decode() in self.inputs.values():
-                        return key_for_value(self.inputs, data.decode())
+                    if data in self.inputs.values():
+                        return key_for_value(self.inputs, data)
         except Exception as e:
             logger.error('Exception: {}'.format(e.args))
             raise e
@@ -486,9 +490,9 @@ class PJLink(ProjectorInterface):
     def get_input_set(self):
         """Get available input terminals.
 
-        :rtype: list[PJLink.Input]
-        :returns: A list containing enum members matching the available input
-            terminals.
+        :rtype: list[str]
+        :returns: A list containing the names of the input terminals
+            available on this projector.
         """
         try:
             result = self.__cmd(cmd=self.Command.INPUT_LIST)
@@ -497,14 +501,10 @@ class PJLink(ProjectorInterface):
                     raise Exception(result[7:11], 'An error occurred: ' + self.cmd_errors[result[7:11]])
                 else:
                     ins = result[7:].split()
-
-                    input_values = set(inp.value for inp in self.inputs)
                     inputs_available = set()
-
                     for i in ins:
-                        if i in input_values:
-                            inputs_available.add(self.inputs(i))
-
+                        if i in self.inputs.values():
+                            inputs_available.add(key_for_value(self.inputs, i))
                     return inputs_available
         except Exception as e:
             logger.error('Exception: {}'.format(e.args))

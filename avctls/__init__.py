@@ -1,5 +1,6 @@
 """Test page app
 """
+import base64
 import importlib
 import json
 import logging
@@ -22,13 +23,16 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 file_handler = logging.FileHandler('avc.log')
-file_handler.setLevel(logging.WARNING)
+file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 
 class Room(object):
-    pass
+    def __init__(self):
+        self.pj = None
+        self.sw = None
+        self.tv = None
 
 
 def create_app(test_config=None):
@@ -95,7 +99,7 @@ def setup_room(app):
 
         return room
     except Exception as e:
-        logger.error('setup_room(): fatal error: {}'.format(e.args), exc_info=True)
+        logger.error('app.setup_room(): fatal error: {}'.format(e.args), exc_info=True)
         sys.exit(1)
 
 
@@ -118,27 +122,31 @@ def setup_projector(room):
     if "model" in pj_sub_key:
         pj.model = pj_sub_key['model']
 
-    # get custom input dict
     if "inputs" in pj_sub_key:
-        assert (isinstance(pj_sub_key['inputs'], dict)), "projector 'inputs' should be instance of dict"
-        for key, value in pj_sub_key['inputs'].items():
-            if isinstance(value, str):
-                if '\\' in value:
-                    # Reinterpret any "\\x.." as "\x.."
-                    decoded_value = value.encode().decode('unicode_escape')
-                    pj.my_inputs.update({key: decoded_value})
-                else:
-                    pj.my_inputs.update({key: value})
+        assert (isinstance(pj_sub_key['inputs'], dict)), "projector 'inputs' should be a dict"
 
-    # TODO: potential bug here.  what if "inputs" not in sub_key ?
-    # pj.my_inputs is defined as empty dict and is merged with <driver>._default_inputs
-    # is that a problem?
+        if "base64_inputs" in pj_sub_key and pj_sub_key['base64_inputs'] is True:
+            # For non-ASCII pjs like NEC, we use base64-encoded bytes
+            for key, value in pj_sub_key['inputs'].items():
+                assert (isinstance(key, str) and isinstance(value, str)), \
+                    "'inputs' should all be JSON string type"
+                decoded_value = base64.b64decode(value)
+                pj.my_inputs.update({key: decoded_value})
+        else:
+            # For PJLink & others that are ASCII-compatible,
+            # it's a plain str that we will encode to bytes
+            for key, value in pj_sub_key['inputs'].items():
+                assert (isinstance(key, str) and isinstance(value, str)), \
+                    "'inputs' should all be JSON string type"
+                pj.my_inputs.update({key: value.encode()})
 
-    # assume driver module is lowercase version of class name
+    logger.debug(pj.my_inputs)
+
+    # Assume driver module is lowercase version of class name..
     driver_module_name = driver_class_name.lower()
-    # import the matching module
+    # ..import the matching module..
     driver_module = importlib.import_module("avctls.drivers.projector." + driver_module_name)
-    # get the class name exported by the module, ie. class NEC in nec.py
+    # ..and get the class name exported by the module, ie. class NEC in nec.py
     driver_class = getattr(driver_module, driver_class_name)
 
     if "comm_method" in pj_sub_key:

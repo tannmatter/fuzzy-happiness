@@ -33,28 +33,28 @@ class SamsungExLink(TVInterface):
 
     Class attributes:
     ----------------
-        _default_inputs dict[str, str]
+        _default_inputs dict[str, bytes]
             Default mapping of input names to input codes.
     """
 
     _default_inputs = {
-        "TV": '\x00\x00',
-        "VIDEO_1": '\x01\x00',
-        "VIDEO_2": '\x01\x01',
-        "VIDEO_3": '\x01\x02',
-        "SVIDEO_1": '\x02\x00',
-        "SVIDEO_2": '\x02\x01',
-        "SVIDEO_3": '\x02\x02',
-        "COMPONENT_1": '\x03\x00',
-        "COMPONENT_2": '\x03\x01',
-        "COMPONENT_3": '\x03\x02',
-        "RGB_1": '\x04\x00',
-        "RGB_2": '\x04\x01',
-        "RGB_3": '\x04\x02',
-        "HDMI_1": '\x05\x00',
-        "HDMI_2": '\x05\x01',
-        "HDMI_3": '\x05\x02',
-        "HDMI_4": '\x05\x03'
+        "TV": b'\x00\x00',
+        "VIDEO_1": b'\x01\x00',
+        "VIDEO_2": b'\x01\x01',
+        "VIDEO_3": b'\x01\x02',
+        "SVIDEO_1": b'\x02\x00',
+        "SVIDEO_2": b'\x02\x01',
+        "SVIDEO_3": b'\x02\x02',
+        "COMPONENT_1": b'\x03\x00',
+        "COMPONENT_2": b'\x03\x01',
+        "COMPONENT_3": b'\x03\x02',
+        "RGB_1": b'\x04\x00',
+        "RGB_2": b'\x04\x01',
+        "RGB_3": b'\x04\x02',
+        "HDMI_1": b'\x05\x00',
+        "HDMI_2": b'\x05\x01',
+        "HDMI_3": b'\x05\x02',
+        "HDMI_4": b'\x05\x03'
     }
 
     class Command(TVInterface.Command):
@@ -106,8 +106,8 @@ class SamsungExLink(TVInterface):
         :param str device: Serial device to use.
         :param int baudrate: Serial baudrate
         :param float timeout: Read timeout for serial operations.
-        :param dict inputs: Custom mapping of input names to string values.
-            Mapping should be {str, str}.  If None, a default input mapping is used.
+        :param dict inputs: Custom mapping of input names to byte codes.
+            Mapping should be {str, bytes}.  If None, a default input mapping is used.
         """
         try:
             self.comms = self.Comms()
@@ -200,7 +200,7 @@ class SamsungExLink(TVInterface):
         # (ex. HDMI 4 on a TV with only 3 HDMI inputs). It just says "Not available" on the screen
         # and goes back to the last valid input selected.
         try:
-            input_value = self.inputs[input_name]
+            input_code = self.inputs[input_name]
         except KeyError as ke:
             logger.error("select_input(): bad input '{}'".format(input_name))
             raise ke
@@ -208,10 +208,10 @@ class SamsungExLink(TVInterface):
         except Exception as e:
             raise e
         else:
-            self.__cmd(self.Command.SELECT_INPUT, input_value.encode())
+            self.__cmd(self.Command.SELECT_INPUT, input_code)
             # We really have nothing to go on regarding whether this actually succeeded or not,
             # but let's assume it did and return the proper response.
-            return key_for_value(self.inputs, input_value)
+            return key_for_value(self.inputs, input_code)
 
     def mute_toggle(self):
         self.__cmd(self.Command.KEY_MUTE)
