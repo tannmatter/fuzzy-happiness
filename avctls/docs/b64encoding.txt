@@ -1,0 +1,46 @@
+NEC projector base64 input mappings
+===================================
+
+Input            Bytes     .b64encode()
+-----            -----     ------------
+
+RGB_1            b'\x01'        b'AQ=='
+RGB_2            b'\x02'        b'Ag=='
+RGB_3            b'\x03'        b'Aw=='
+HDMI_1           b'\x1a'        b'Gg=='
+HDMI_1_ALT       b'\xa1'        b'oQ=='
+HDMI_2           b'\x1b'        b'Gw=='
+HDMI_2_ALT       b'\xa2'        b'og=='
+VIDEO_1          b'\x06'        b'Bg=='
+VIDEO_2          b'\x0b'        b'Cw=='
+VIDEO_3          b'\x10'        b'EA=='
+DISPLAYPORT      b'\xa6'        b'pg=='
+DISPLAYPORT_ALT  b'\x1b'        b'Gw=='
+USB_VIEWER_A     b'\x1f'        b'Hw=='
+USB_VIEWER_B     b'\x22'        b'Ig=='
+NETWORK          b'\x20'        b'IA=='
+
+
+Samsung TV base64 input mappings
+================================
+
+Input            Bytes     .b64encode()
+-----            -----     ------------
+
+TV            b'\x00\x00'       b'AAA='
+VIDEO_1       b'\x01\x00'       b'AQA='
+VIDEO_2       b'\x01\x01'       b'AQE='
+VIDEO_3       b'\x01\x02'       b'AQI='
+SVIDEO_1      b'\x02\x00'       b'AgA='
+SVIDEO_2      b'\x02\x01'       b'AgE='
+SVIDEO_3      b'\x02\x02'       b'AgI='
+COMPONENT_1   b'\x03\x00'       b'AwA='
+COMPONENT_2   b'\x03\x01'       b'AwE='
+COMPONENT_3   b'\x03\x02'       b'AwI='
+RGB_1         b'\x04\x00'       b'BAA='
+RGB_2         b'\x04\x01'       b'BAE='
+RGB_3         b'\x04\x02'       b'BAI='
+HDMI_1        b'\x05\x00'       b'BQA='
+HDMI_2        b'\x05\x01'       b'BQE='
+HDMI_3        b'\x05\x02'       b'BQI='
+HDMI_4        b'\x05\x03'       b'BQM='
