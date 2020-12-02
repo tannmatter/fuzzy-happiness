@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import sys
-from flask import Flask
+from flask import Flask, render_template
 
 # wrapper classes for passing to templates
 from avctls.drivers.projector import Projector
@@ -58,7 +58,8 @@ def create_app(test_config=None):
     @app.route('/home')
     def index():
         # this is where our main system on/system off control page will be located
-        return 'this is the main screen'
+        # for now, a test to make sure fontawesome is installed properly
+        return render_template('home.html', room=app.room)
 
     # Blueprint registration...
 
