@@ -118,7 +118,7 @@ def setup_switcher(room):
         # assume we are using one of the relay classes
         sw.interface = driver_class(
             inputs=sw.my_inputs,
-            default_input=sw.default_input
+            input_default=sw.default_input
         )
     elif comm_method == 'serial':
         assert ("serial_device" in sw_sub_key), "serial connection requested but no serial_device specified!"
@@ -130,7 +130,7 @@ def setup_switcher(room):
             serial_device=sw_sub_key['serial_device'],
             serial_baudrate=baud_rate,
             inputs=sw.my_inputs,
-            default_input=sw.default_input
+            input_default=sw.default_input
         )
     elif comm_method == 'tcp':
         assert ("ip_address" in sw_sub_key), "tcp connection requested but no ip_address specified!"
@@ -139,13 +139,13 @@ def setup_switcher(room):
                 ip_address=sw_sub_key['ip_address'],
                 port=sw_sub_key['port'],
                 inputs=sw.my_inputs,
-                default_input=sw.default_input
+                input_default=sw.default_input
             )
         else:
             sw.interface = driver_class(
                 ip_address=sw_sub_key['ip_address'],
                 inputs=sw.my_inputs,
-                default_input=sw.default_input
+                input_default=sw.default_input
             )
 
     if sw.interface is None:
