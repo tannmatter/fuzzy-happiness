@@ -112,6 +112,9 @@ def setup_projector(room):
                     "'inputs' should all be JSON string type"
                 pj.my_inputs.update({key: value.encode()})
 
+    if "default" in pj_sub_key['inputs']:
+        pj.default_input = pj_sub_key['inputs']['default']
+
     # Assume driver module is lowercase version of class name..
     driver_module_name = driver_class_name.lower()
     # ..import the matching module..

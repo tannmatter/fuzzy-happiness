@@ -1,0 +1,39 @@
+{
+  "building": "Burdick Hall",
+  "room": "115",
+  "projector": {
+    "driver": "PJLink",
+    "make": "NEC",
+    "model": "NP-M300X",
+    "comm_method": "tcp",
+    "ip_address": "my_pj_ip_here",
+    "port": 4352,
+    "base64_inputs": false,
+    "inputs": {
+      "RGB_1": "11",
+      "RGB_2": "12",
+      "VIDEO_1": "21",
+      "HDMI": "31",
+      "/": "Having a default will mean we can hit the reset button and this device should go back to its default input setting.",
+      "//": "It also should automatically be selected by the driver after system startup.",
+      "default": "31"
+    }
+  },
+  "switcher": {
+    "driver": "DockerPiRelay",
+    "make": "Kramer",
+    "model": "VS-211UHD",
+    "inputs": {
+      "HDMI_1": "1",
+      "HDMI_2": "2",
+      "default": "1"
+    }
+  },
+  "///": "This means that if we select the 'Computer' device from the home screen, the NEC should be switched to 'HDMI' and then the Kramer should be switched to 'HDMI_1', in that order.",
+  "system_inputs": {
+    "Computer": {
+      "projector": "HDMI",
+      "switcher": "HDMI_1"
+    }
+  }
+}
