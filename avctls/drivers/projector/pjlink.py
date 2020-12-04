@@ -156,6 +156,9 @@ class PJLink(ProjectorInterface):
                 self.comms.port = port
                 self.comms.connection.close()
 
+                # None of the information below is really needed and removing
+                # this section may speed things up or prevent sockets dying.
+                """
                 # get what PJLink class we support
                 self.pjlink_class = self.get_pjlink_class()
 
@@ -165,6 +168,7 @@ class PJLink(ProjectorInterface):
                     self.lamp_count = len(lamp_info)
                 else:
                     self.lamp_count = 1
+                """
 
                 # get custom input mapping
                 if inputs and isinstance(inputs, dict):
@@ -236,13 +240,13 @@ class PJLink(ProjectorInterface):
                 if result:
                     # Check for potential errors and throw appropriate exceptions for them
                     if b'ERR1' in result:
-                        raise BadCommandError('Unrecognized command: {}'.format(cmd_bytes))
+                        raise BadCommandError('Error: Unrecognized command: {}'.format(cmd_bytes))
                     elif b'ERR2' in result:
-                        raise OutOfRangeError('Parameters out of range: {}'.format(params))
+                        raise OutOfRangeError('Error: Parameter out of range: {}'.format(params))
                     elif b'ERR3' in result:
-                        raise DeviceNotReadyError('Device unavailable.  Is it powered on?')
+                        raise DeviceNotReadyError('Error: Device unavailable.  Is it powered on?')
                     elif b'ERR4' in result:
-                        raise CommandFailureError('Command failure.')
+                        raise CommandFailureError('Error: Command failure.')
 
                 return result
 
@@ -373,6 +377,8 @@ class PJLink(ProjectorInterface):
             be the driver default name for the input terminal.
         """
         try:
+            if input_name not in self.inputs:
+                raise KeyError("Error: No input named '{}'".format(input_name))
             result = self.__cmd(self.Command.SWITCH_INPUT, self.inputs[input_name])
         except Exception as e:
             logger.error('select_input(): Exception occurred: {}'.format(e.args))

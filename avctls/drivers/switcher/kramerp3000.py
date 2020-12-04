@@ -304,6 +304,11 @@ class KramerP3000(SwitcherInterface):
             default name for the input terminal.
         """
         try:
+            if input_name not in self.inputs:
+                raise KeyError("Error: No input named '{}'".format(input_name))
+            if output_name not in self.outputs:
+                raise KeyError("Error: No output named '{}'".format(output_name))
+
             in_value = self.inputs[input_name]
             out_value = self.outputs[output_name]
 

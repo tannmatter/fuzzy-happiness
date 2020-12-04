@@ -614,6 +614,8 @@ class NEC(ProjectorInterface):
             the driver default name for the input terminal.
         """
         try:
+            if input_name not in self.inputs:
+                raise KeyError("Error: No input named '{}'".format(input_name))
             data = self.__cmd(self.Command.SWITCH_INPUT, self.inputs[input_name], checksum_required=True)
         except Exception as e:
             logger.error('select_input(): Exception occurred: {}'.format(e.args))

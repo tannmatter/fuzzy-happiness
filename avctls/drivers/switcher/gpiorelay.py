@@ -121,6 +121,8 @@ class GPIORelay(SwitcherInterface):
             driver default name for the input terminal.
         """
         try:
+            if input_name not in self.inputs:
+                raise KeyError("Error: No input named '{}'".format(input_name))
             input_value = self.inputs[input_name]
             logger.debug("Selecting input '{}' on GPIO {}".format(input_name, input_value))
             GPIO.output(input_value, self.R_ON)

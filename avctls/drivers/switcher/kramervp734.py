@@ -647,10 +647,7 @@ class KramerVP734(SwitcherInterface):
                 logger.debug(self._input_status)
                 return self._input_status
             else:
-                raise KeyError
-        except KeyError as ke:
-            logger.error('select_input(): bad input {}'.format(input_name))
-            raise ke
+                raise KeyError("Error: No input named '{}'".format(input_name))
         except Exception as e:
             logger.error('select_input(): Exception occurred: {}'.format(e.args), exc_info=True)
             raise e

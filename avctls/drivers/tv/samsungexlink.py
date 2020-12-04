@@ -203,9 +203,11 @@ class SamsungExLink(TVInterface):
         # (ex. HDMI 4 on a TV with only 3 HDMI inputs). It just says "Not available" on the screen
         # and goes back to the last valid input selected.
         try:
+            if input_name not in self.inputs:
+                raise KeyError("Error: No input named '{}'".format(input_name))
             input_code = self.inputs[input_name]
         except KeyError as ke:
-            logger.error("select_input(): bad input '{}'".format(input_name))
+            logger.error("select_input(): Exception occurred: {}".format(input_name))
             raise ke
         # Any other exception has already been logged.  Just send it upward.
         except Exception as e:
