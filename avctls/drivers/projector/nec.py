@@ -311,7 +311,7 @@ class NEC(ProjectorInterface):
     }
 
     def __init__(self, ip_address=None, *, port=7142, comm_method='tcp', serial_device=None,
-                 serial_baudrate=38400, serial_timeout=0.1, inputs: dict = None):
+                 serial_baudrate=38400, serial_timeout=0.1, inputs: dict = None, input_default=None):
         """Constructor
 
         Create an NEC projector driver instance and initialize a connection to the
@@ -332,6 +332,7 @@ class NEC(ProjectorInterface):
             (if comm_method=='serial').
         :param dict inputs: Custom mapping of input names to byte values.
             Mapping should be {str, bytes}.  If None, a default mapping is used.
+        :param str input_default: The default input (if any) to select after setup
         """
         self.comms = self.Comms()
 
@@ -351,7 +352,7 @@ class NEC(ProjectorInterface):
                     self.comms.connection = connection
                     self.comms.connection.close()
                 else:
-                    raise UnboundLocalError("tcp connection requested but no address specified!")
+                    raise ValueError("tcp connection requested but no address specified!")
             else:
                 raise ValueError("comm_method should be 'tcp' or 'serial'")
 
@@ -361,8 +362,9 @@ class NEC(ProjectorInterface):
             else:
                 self.inputs = self._default_inputs
 
-            logger.debug('input dict passed: {}'.format(inputs))
-            logger.debug('my combined inputs: {}'.format(self.inputs))
+            self._input_default = input_default
+            if input_default:
+                self.select_input(input_default)
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)

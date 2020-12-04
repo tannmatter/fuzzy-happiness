@@ -35,12 +35,12 @@
         {# <!--Same, auto margins center the navbar-nav inside the container--> #}
         {# <!--Buttons show only if room has a device of that type defined--> #}
         <ul class="navbar-nav mr-auto ml-auto">
-            {% if room.pj %}
+            {% if room.projector %}
             <li class="nav-item">
                 <button class="btn btn-light btn-lg btn-nav-top" type="button"><i class="fas fa-video"></i></button>
             </li>
             {% endif %}
-            {% if room.sw %}
+            {% if room.switcher %}
             <li class="nav-item">
                 <button class="btn btn-secondary btn-lg btn-nav-top" type="button"><i class="fas fa-random"></i></button>
             </li>

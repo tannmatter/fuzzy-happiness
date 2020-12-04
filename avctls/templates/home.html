@@ -4,23 +4,23 @@
 
 {% block header %}
 <div class="container-fluid">
-    <br/><br/><br/>
     <div class="row align-items-center justify-content-center">
-        <button class="btn btn-primary btn-lg" type="button" style="font-size: 3em;"><i class="fas fa-home"></i></button>
+        System inputs:
     </div>
 </div>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-<br/><br/><br/><br/>
+    <br/><br/>
     <div class="row align-items-center justify-content-center">
-        <div class="mx-auto" style="width: 600px;">
-            {# <!--Not lining up properly in testing.  Don't have time to screw with bootstrap--> #}
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-            <button class="btn btn-success btn-lg btn-home" type="button">System On / Reset</button>
-            <button class="btn btn-danger btn-lg btn-home" type="button">System Off</button>
-        </div>
+        {# <!--Display buttons for room.system_inputs--> #}
+        {% for input in room.system_inputs %}
+            <div class="col-3 text-center">
+                <button class="btn btn-secondary btn-lg btn-input" type="button">{{ input }}</button>
+            </div>
+        {% endfor %}
+
     </div>
 </div>
 {% endblock %}

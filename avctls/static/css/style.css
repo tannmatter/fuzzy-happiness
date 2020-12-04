@@ -12,7 +12,13 @@ body {
 }
 
 .btn-home {
-    height: 100px;
+    height: 80px;
     width: 250px;
-    font-size: 2em;
+    font-size: 1.5em;
+}
+
+.btn-input {
+    height: 80px;
+    width: 180px;
+    font-size: 1.5em;
 }

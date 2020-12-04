@@ -392,7 +392,7 @@ class KramerVP734(SwitcherInterface):
     }
 
     def __init__(self, serial_device='/dev/ttyUSB0', serial_baudrate=115200, serial_timeout=0.5, comm_method='serial',
-                 ip_address=None, port=5000, tcp_timeout=2.0, inputs: dict = None, default_input=None):
+                 ip_address=None, port=5000, tcp_timeout=2.0, inputs: dict = None, input_default=None):
         """Constructor
 
         :param str serial_device: The serial device to use (if comm_method=='serial').
@@ -409,6 +409,7 @@ class KramerVP734(SwitcherInterface):
         :param float tcp_timeout: Timeout for socket operations (if comm_method=='tcp').
             Default is 2.0. (Lesser values have been problematic with this device.)
         :param dict inputs: Custom mapping of input names to numbers.
+        :param str input_default: The default input (if any) to select after setup
         """
         try:
             self._power_status = None
@@ -421,6 +422,7 @@ class KramerVP734(SwitcherInterface):
                 self.comms.serial_baudrate = serial_baudrate
                 self.comms.serial_timeout = serial_timeout
                 self.comms.connection = Serial(port=serial_device, baudrate=serial_baudrate, timeout=serial_timeout)
+                self.comms.connection.close()
 
             elif comm_method == 'tcp' and ip_address is not None:
                 self.comms = self.Comms()
@@ -428,6 +430,7 @@ class KramerVP734(SwitcherInterface):
                 self.comms.tcp_port = port
                 self.comms.tcp_timeout = tcp_timeout
                 self.comms.connection = create_connection((ip_address, port), timeout=tcp_timeout)
+                self.comms.connection.close()
 
             # get custom input mapping
             if inputs and isinstance(inputs, dict):
@@ -435,15 +438,13 @@ class KramerVP734(SwitcherInterface):
             else:
                 self.inputs = self._default_inputs
 
-            self._default_input = default_input
-            if default_input:
-                self.select_input(default_input)
+            self._input_default = input_default
+            if input_default:
+                self.select_input(input_default)
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
             sys.exit(1)
-        finally:
-            self.comms.connection.close()
 
     def open_connection(self):
         if isinstance(self.comms.connection, Serial):

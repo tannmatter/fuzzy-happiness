@@ -57,14 +57,14 @@ class GPIORelay(SwitcherInterface):
         '4': 5
     }
 
-    def __init__(self, low_active=True, inputs=None, duration=0.3, default_input=None):
+    def __init__(self, low_active=True, inputs=None, duration=0.3, input_default=None):
         """Initialize the driver
 
         :param bool low_active: Whether this relay switch uses low voltage (True) to activate
             or high voltage (False).
         :param dict inputs: Custom mapping of inputs names to BCM GPIO pins.
             Mapping should be {str, int}.  If None, a default mapping is used.
-        :param str default_input: The default input (if any) to select after setup
+        :param str input_default: The default input (if any) to select after setup
         """
         try:
             if low_active:
@@ -99,9 +99,9 @@ class GPIORelay(SwitcherInterface):
             self._activate_duration = duration
 
             # if default input is specified, switch to it now
-            self._default_input = default_input
-            if default_input:
-                self.select_input(default_input)
+            self._input_default = input_default
+            if input_default:
+                self.select_input(input_default)
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)

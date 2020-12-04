@@ -40,6 +40,7 @@ from serial import Serial
 
 from avctls.drivers.switcher import SwitcherInterface
 from utils import merge_dicts, key_for_value
+from avctls.errors import (BadCommandError, OutOfRangeError, UnsupportedOperationError)
 
 BUFF_SIZE = 2048
 
@@ -173,7 +174,7 @@ class KramerP3000(SwitcherInterface):
                             data_available = False
 
     def __init__(self, serial_device='/dev/ttyUSB0', *, comm_method='serial', serial_baudrate=9600, serial_timeout=0.25,
-                 ip_address=None, port=5000, inputs: dict = None, outputs: dict = None, default_input=None):
+                 ip_address=None, port=5000, inputs: dict = None, outputs: dict = None, input_default=None):
         """Constructor
 
         The default means of communication is RS-232 serial.  After serial_device,
@@ -196,6 +197,7 @@ class KramerP3000(SwitcherInterface):
             (Having more than one output indicates it's a matrix switcher.)
             Mapping should be {str, str}.
             If None, the default '*' is used, meaning route to all outputs.
+        :param str input_default: The default input (if any) to select after setup
         """
         try:
             if comm_method == 'serial':
@@ -228,9 +230,9 @@ class KramerP3000(SwitcherInterface):
             else:
                 self.outputs = self._default_outputs
 
-            self._default_input = default_input
-            if default_input:
-                self.select_input(default_input)
+            self._input_default = input_default
+            if input_default:
+                self.select_input(input_default)
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
@@ -326,24 +328,24 @@ class KramerP3000(SwitcherInterface):
                     # try the next one
                     continue
                 elif response == self.Error.PARAM_OUT_OF_RANGE:
-                    raise ValueError('Input or output number out of range - '
-                                     'input={}, output={}'.format(in_value, out_value))
+                    raise OutOfRangeError('Input or output number out of range - '
+                                          'input={}, output={}'.format(in_value, out_value))
                 elif response == self.Error.SYNTAX:
-                    raise SyntaxError('Protocol 3000 syntax error: {}'.format(cmd))
+                    raise BadCommandError('Protocol 3000 syntax error: {}'.format(cmd))
                 elif b'ERR' in response:
                     raise Exception('An unknown error was reported by the switcher: {}'.
                                     format(response.decode()))
                 else:
                     # no errors reported, our command probably worked
                     return key_for_value(self.inputs, self.inputs[input_name])
+
         except Exception as e:
             logger.error('select_input(): Exception occurred: {}'.format(e.args), exc_info=True)
             raise e
         finally:
             self.close_connection()
 
-    @property
-    def input_status(self):
+    def get_input_status(self):
         """Get the input(s) assigned to our output(s)
 
         This tries to detect which inputs are routed to which outputs using a few different query commands.
@@ -373,9 +375,9 @@ class KramerP3000(SwitcherInterface):
                 if response == self.Error.CMD_UNAVAILABLE:
                     continue
                 elif response == self.Error.PARAM_OUT_OF_RANGE:
-                    raise ValueError('Parameter out of range: {}'.format(cmd.decode()))
+                    raise OutOfRangeError('Parameter out of range: {}'.format(cmd.decode()))
                 elif response == self.Error.SYNTAX:
-                    raise SyntaxError('Protocol 3000 syntax error: {}'.format(cmd.decode()))
+                    raise BadCommandError('Protocol 3000 syntax error: {}'.format(cmd.decode()))
                 elif b'ERR' in response:
                     raise Exception('An unknown error was reported by the switcher: {}'.
                                     format(response.decode()))
@@ -410,11 +412,15 @@ class KramerP3000(SwitcherInterface):
                             return inputs
 
         except Exception as e:
-            logger.error('input_status: Exception occurred: '.format(e.args), exc_info=True)
+            logger.error('get_input_status(): Exception occurred: {}'.format(e.args), exc_info=True)
             return None
 
         finally:
             self.close_connection()
+
+    @property
+    def input_status(self):
+        return self.get_input_status()
 
     def power_on(self):
         """Unsupported

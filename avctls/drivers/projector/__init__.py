@@ -14,7 +14,7 @@ to many different equipment combinations
 import abc
 from enum import Enum
 
-__all__ = ["ProjectorInterface", "Projector"]
+__all__ = ["ProjectorInterface"]
 
 
 class ProjectorInterface(metaclass=abc.ABCMeta):
@@ -94,31 +94,3 @@ class ProjectorInterface(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def errors(self) -> list:
         raise NotImplementedError
-
-
-class Projector:
-    """Wrapper class used by the application to pass data to templates
-
-    Instance attributes:
-        make: str
-            Manufacturer/brand
-        model: str
-            Model number or series
-        my_inputs: dict
-            Input assignments specified in the application's configuration
-            (and only those specified in the configuration) are mapped here.
-            This allows the application to render input controls for only
-            those input terminals that are actually connected to equipment,
-            while ignoring the driver defaults.
-        interface: ProjectorInterface
-            The device's driver
-    """
-    def __init__(self, make=None, model=None, my_inputs=None, interface=None, default_input=None):
-        self.make = make
-        self.model = model
-        if not my_inputs:
-            self.my_inputs = {}
-        else:
-            self.my_inputs = my_inputs
-        self.interface = interface
-        self.default_input = default_input

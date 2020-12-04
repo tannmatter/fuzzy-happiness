@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}Projector controls{% endblock %}
+
+{% block header %}
+<div class="container-fluid">
+    <div class="row align-items-center justify-content-center">
+        Projector controls:
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <br/><br/>
+    <div class="row align-items-center justify-content-center">
+        <div class="mx-auto" style="width: 600px;">
+            {# <!--Not lining up properly in testing.  Don't have time to screw with bootstrap--> #}
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            <button class="btn btn-success btn-lg btn-home" type="button">Projector On / Reset</button>
+            <button class="btn btn-danger btn-lg btn-home" type="button">Projector Off</button>
+        </div>
+    </div>
+    <br/><br/>
+    <div class="row align-items-center justify-content-center">
+        {% for input in room.projector.my_inputs %}
+            <div class="col-3 text-center">
+                <button class="btn btn-secondary btn-lg btn-input" type="button">{{ input }}</button>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

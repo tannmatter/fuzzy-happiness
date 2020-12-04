@@ -100,7 +100,7 @@ class SamsungExLink(TVInterface):
             if isinstance(self.connection, Serial):
                 return self.connection.read(size)
 
-    def __init__(self, device='/dev/ttyUSB0', baudrate=9600, timeout=0.1, inputs: dict = None):
+    def __init__(self, device='/dev/ttyUSB0', baudrate=9600, timeout=0.1, inputs: dict = None, input_default=None):
         """Constructor
 
         :param str device: Serial device to use.
@@ -108,6 +108,7 @@ class SamsungExLink(TVInterface):
         :param float timeout: Read timeout for serial operations.
         :param dict inputs: Custom mapping of input names to byte codes.
             Mapping should be {str, bytes}.  If None, a default input mapping is used.
+        :param str input_default: The default input (if any) to select after setup
         """
         try:
             self.comms = self.Comms()
@@ -115,6 +116,7 @@ class SamsungExLink(TVInterface):
             self.comms.baudrate = baudrate
             self.comms.timeout = timeout
             self.comms.connection = Serial(port=device, baudrate=baudrate, timeout=timeout)
+            self.comms.connection.close()
 
             # get custom input mapping
             if inputs and isinstance(inputs, dict):
@@ -122,12 +124,13 @@ class SamsungExLink(TVInterface):
             else:
                 self.inputs = self._default_inputs
 
+            self._input_default = input_default
+            if input_default:
+                self.select_input(input_default)
+
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
             sys.exit(1)
-
-        finally:
-            self.comms.connection.close()
 
     @staticmethod
     def __checksum(_bytes: bytes) -> bytes:

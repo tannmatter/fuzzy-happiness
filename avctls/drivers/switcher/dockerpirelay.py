@@ -60,7 +60,7 @@ class DockerPiRelay(SwitcherInterface):
         '4': 0x04
     }
 
-    def __init__(self, device_bus=1, device_addr=0x10, inputs: dict = None, duration=0.3, default_input=None):
+    def __init__(self, device_bus=1, device_addr=0x10, inputs: dict = None, duration=0.3, input_default=None):
         """Initialize the driver
 
         :param int device_bus: i2c device bus.
@@ -72,7 +72,7 @@ class DockerPiRelay(SwitcherInterface):
             If None, a default mapping is used.
         :param float duration: Duration of relay activation in seconds.
             Default is 0.3
-        :param str default_input: The default input (if any) to select after setup.
+        :param str input_default: The default input (if any) to select after setup.
         """
         try:
             self._DEVICE_BUS = device_bus
@@ -87,9 +87,9 @@ class DockerPiRelay(SwitcherInterface):
 
             self._selected_input = None
             self._activate_duration = duration
-            self._default_input = default_input
-            if default_input:
-                self.select_input(default_input)
+            self._input_default = input_default
+            if input_default:
+                self.select_input(input_default)
 
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
