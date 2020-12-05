@@ -1,13 +1,61 @@
 import base64
 import importlib
-from flask import Blueprint, render_template, current_app
+from flask import Blueprint, render_template, current_app, flash, redirect, url_for
 
 projector_bp = Blueprint('projector', __name__, url_prefix='/projector')
 
 
 @projector_bp.route('/')
 def pj_index():
-    return render_template('projector.html', room=current_app.room)
+    # Report status and any errors
+    return redirect(url_for('projector.pj_get_status'))
+
+
+@projector_bp.route('/status')
+def pj_get_status():
+    try:
+        pj = current_app.room.projector.interface
+
+        errors = pj.get_errors()
+        input_status = pj.get_input_status()
+        power_status = pj.get_power_status()
+    except Exception as e:
+        flash(e.args[0])
+        return render_template('projector.html', room=current_app.room)
+    else:
+        flash('Power: {}'.format(power_status))
+        flash('Input selected: {}'.format(input_status))
+        return render_template('projector.html', room=current_app.room, errors=errors)
+
+
+@projector_bp.route('/power/<state>')
+def pj_set_power_state(state):
+    try:
+        pj = current_app.room.projector.interface
+        if state == 'on' or state == '1':
+            if pj.power_on():
+                flash('Power On OK')
+        elif state == 'off' or state == '0':
+            if pj.power_off():
+                flash('Power Off OK')
+        else:
+            flash("Error: Invalid parameter: '{}'".format(state))
+        return render_template('projector.html', room=current_app.room)
+    except Exception as e:
+        flash(e.args[0])
+        return render_template('projector.html', room=current_app.room)
+
+
+@projector_bp.route('/input/<inp>')
+def pj_select_input(inp):
+    try:
+        status = current_app.room.projector.interface.select_input(inp)
+    except Exception as e:
+        flash(e.args[0])
+        return render_template('projector.html', room=current_app.room)
+    else:
+        flash('Input selected: {}'.format(status))
+        return render_template('projector.html', room=current_app.room)
 
 
 @projector_bp.route('/input')
@@ -16,10 +64,10 @@ def pj_input_status():
     return status
 
 
-@projector_bp.route('/input/<inp>')
-def pj_select_input(inp):
-    status = current_app.room.projector.interface.select_input(inp)
-    return status
+@projector_bp.route('/power')
+def pj_get_power_state():
+    power_status = current_app.room.projector.interface.power_status
+    return power_status
 
 
 # for debugging
@@ -27,24 +75,6 @@ def pj_select_input(inp):
 def pj_get_inputs():
     inputs = current_app.room.projector.interface.inputs
     return inputs
-
-
-@projector_bp.route('/power')
-def pj_get_power_state():
-    return current_app.room.projector.interface.power_status
-
-
-@projector_bp.route('/power/<state>')
-def pj_set_power_state(state):
-    pj = current_app.room.projector.interface
-    if state == 'on' or state == '1':
-        if pj.power_on():
-            return 'On'
-    elif state == 'off' or state == '0':
-        if pj.power_off():
-            return 'Off'
-    else:
-        return 'parameter {} invalid'.format(state)
 
 
 class Projector:
