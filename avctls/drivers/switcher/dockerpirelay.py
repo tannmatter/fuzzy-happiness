@@ -136,12 +136,12 @@ class DockerPiRelay(SwitcherInterface):
     def power_on(self):
         """Unsupported"""
         logger.debug("power_on(): operation not supported with this device")
-        return True
+        return None
 
     def power_off(self):
         """Unsupported"""
         logger.debug("power_off(): operation not supported with this device")
-        return True
+        return None
 
     @property
     def power_status(self):
