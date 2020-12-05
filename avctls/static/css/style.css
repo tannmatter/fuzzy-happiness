@@ -22,3 +22,19 @@ body {
     width: 180px;
     font-size: 1.5em;
 }
+
+.flash ul{
+    padding-inline-start: 0px;
+    list-style-type: none;
+    text-align: center;
+    font-size: 1.2em;
+}
+.flash ul li.error{
+    color: red;
+}
+.flash ul li.warning{
+    color: orange;
+}
+.flash ul li.info{
+    color: green;
+}
