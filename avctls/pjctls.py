@@ -137,8 +137,10 @@ def setup_projector(room):
             for key, value in pj_sub_key['inputs'].items():
                 assert (isinstance(key, str) and isinstance(value, str)), \
                     "'inputs' should all be JSON string type"
-                decoded_value = base64.b64decode(value)
-                pj.my_inputs.update({key: decoded_value})
+                if key != "default":
+                    decoded_value = base64.b64decode(value)
+                    pj.my_inputs.update({key: decoded_value})
+                    print("key: {}, decoded_value: {}".format(key, decoded_value))
         else:
             # For PJLink & others that are ASCII-compatible,
             # it's a plain str that we will encode to bytes
