@@ -66,8 +66,32 @@
     <header>
         {% block header %}{% endblock %}
     </header>
-    {% for message in get_flashed_messages() %}
-        <div class="flash">{{ message }}</div>
-    {% endfor %}
+    <div class="row flash align-items-center justify-content-center">
+        <div class="col-3">
+            <ul>
+                {# <!--flash()ed messages--> #}
+                {% for message in get_flashed_messages() %}
+                    {% if 'warning' in message.lower() %}
+                        <li class="warning">{{ message }}</li>
+                    {% elif 'error' in message.lower() %}
+                        <li class="error">{{ message }}</li>
+                    {% else %}
+                        <li class="info">{{ message }}</li>
+                    {% endif %}
+                {% endfor %}
+
+                {# <!--result of pj.get_errors()--> #}
+                {% if errors is defined %}
+                    {% for message in errors %}
+                        {% if 'warning' in message.lower() %}
+                            <li class="warning">{{ message }}</li>
+                        {% else %}
+                            <li class="error">{{ message }}</li>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </ul>
+        </div>
+    </div>
     {% block content %}{% endblock %}
 </section>
