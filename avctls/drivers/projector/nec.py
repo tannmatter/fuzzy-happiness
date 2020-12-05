@@ -438,7 +438,7 @@ class NEC(ProjectorInterface):
                     # Two possibile reasons here:
                     #   1) Connection went south
                     #   2) Malformed command
-                    raise ConnectionError('No response from device.  Is it connected?')
+                    raise ConnectionError('Error: No response from device.  Is it connected?')
 
                 # close the connection after each command
                 self.comms.connection.close()
@@ -449,16 +449,16 @@ class NEC(ProjectorInterface):
                     error_code = tuple(result[5:7])
 
                     if error_code in [(0x00, 0x00)]:
-                        raise BadCommandError('Unrecognized command: {}'.format(cmd_bytes))
+                        raise BadCommandError('Error: Unrecognized command: {}'.format(cmd_bytes))
                     elif error_code in [(0x00, 0x01)]:
-                        raise UnsupportedOperationError('Command {} unsupported by this model'.format(cmd_bytes),
+                        raise UnsupportedOperationError('Error: Command {} unsupported by this model'.format(cmd_bytes),
                                                         ignore=False)
                     elif error_code in [(0x01, 0x00), (0x01, 0x01), (0x01, 0x02)]:
-                        raise OutOfRangeError('One or more parameters are out of range: {}'.format(params))
+                        raise OutOfRangeError('Error: One or more parameters are out of range: {}'.format(params))
                     elif error_code in [(0x02, 0x03), (0x02, 0x0D)]:
-                        raise DeviceNotReadyError('Device unavailable.  Is it powered on?')
+                        raise DeviceNotReadyError('Error: Device unavailable.  Is it powered on?')
                     elif error_code in [(0x02, 0x0E)]:
-                        raise CommandFailureError('Command failure.')
+                        raise CommandFailureError('Error: Command failure.')
                     else:
                         raise Exception(self.cmd_errors[error_code])
                 else:

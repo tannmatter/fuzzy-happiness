@@ -333,10 +333,10 @@ class KramerP3000(SwitcherInterface):
                     # try the next one
                     continue
                 elif response == self.Error.PARAM_OUT_OF_RANGE:
-                    raise OutOfRangeError('Input or output number out of range - '
+                    raise OutOfRangeError('Error: Input or output number out of range - '
                                           'input={}, output={}'.format(in_value, out_value))
                 elif response == self.Error.SYNTAX:
-                    raise BadCommandError('Protocol 3000 syntax error: {}'.format(cmd))
+                    raise BadCommandError('Error: Bad Protocol 3000 syntax: {}'.format(cmd))
                 elif b'ERR' in response:
                     raise Exception('An unknown error was reported by the switcher: {}'.
                                     format(response.decode()))
@@ -380,9 +380,9 @@ class KramerP3000(SwitcherInterface):
                 if response == self.Error.CMD_UNAVAILABLE:
                     continue
                 elif response == self.Error.PARAM_OUT_OF_RANGE:
-                    raise OutOfRangeError('Parameter out of range: {}'.format(cmd.decode()))
+                    raise OutOfRangeError('Error: Parameter out of range: {}'.format(cmd.decode()))
                 elif response == self.Error.SYNTAX:
-                    raise BadCommandError('Protocol 3000 syntax error: {}'.format(cmd.decode()))
+                    raise BadCommandError('Error: Bad Protocol 3000 syntax: {}'.format(cmd.decode()))
                 elif b'ERR' in response:
                     raise Exception('An unknown error was reported by the switcher: {}'.
                                     format(response.decode()))
