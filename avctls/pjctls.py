@@ -56,7 +56,11 @@ def pj_select_input(inp):
     try:
         status = current_app.room.projector.interface.select_input(inp)
     except Exception as e:
-        flash(e.args[0])
+        exc_args = e.args[0]
+        # prevent jinja from erroring out on numeric OSErrors, ie connection refused, etc.
+        if type(exc_args) == int:
+            exc_args = str(exc_args)
+        flash(exc_args)
         return render_template('projector.html', room=current_app.room)
     else:
         flash('Input selected: {}'.format(status))
@@ -140,7 +144,6 @@ def setup_projector(room):
                 if key != "default":
                     decoded_value = base64.b64decode(value)
                     pj.my_inputs.update({key: decoded_value})
-                    print("key: {}, decoded_value: {}".format(key, decoded_value))
         else:
             # For PJLink & others that are ASCII-compatible,
             # it's a plain str that we will encode to bytes
