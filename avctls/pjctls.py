@@ -31,15 +31,20 @@ def pj_get_status():
 @projector_bp.route('/power/<state>')
 def pj_set_power_state(state):
     try:
-        pj = current_app.room.projector.interface
+        pj = current_app.room.projector
         if state == 'on' or state == '1':
-            if pj.power_on():
+            if pj.interface.power_on():
                 flash('Power On OK')
+            # if a default input is configured, select it now
+            if pj.default_input:
+                return redirect(url_for('projector.pj_select_input', inp=pj.default_input))
+
         elif state == 'off' or state == '0':
-            if pj.power_off():
+            if pj.interface.power_off():
                 flash('Power Off OK')
         else:
             flash("Error: Invalid parameter: '{}'".format(state))
+
         return render_template('projector.html', room=current_app.room)
     except Exception as e:
         flash(e.args[0])
@@ -140,7 +145,8 @@ def setup_projector(room):
             for key, value in pj_sub_key['inputs'].items():
                 assert (isinstance(key, str) and isinstance(value, str)), \
                     "'inputs' should all be JSON string type"
-                pj.my_inputs.update({key: value.encode()})
+                if key != "default":
+                    pj.my_inputs.update({key: value.encode()})
 
     if "default" in pj_sub_key['inputs']:
         pj.default_input = pj_sub_key['inputs']['default']

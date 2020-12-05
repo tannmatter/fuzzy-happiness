@@ -177,8 +177,10 @@ class PJLink(ProjectorInterface):
                     self.inputs = self._default_inputs
 
                 self._input_default = input_default
-                if input_default:
-                    self.select_input(input_default)
+
+                # We're going to handle this from the app now instead
+                #if input_default:
+                #    self.select_input(input_default)
 
             else:
                 raise ValueError('no IP address specified')
