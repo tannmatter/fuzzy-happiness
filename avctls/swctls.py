@@ -131,7 +131,8 @@ def setup_switcher(room):
     if "inputs" in sw_sub_key:
         assert (isinstance(sw_sub_key['inputs'], dict)), "switcher 'inputs' should be instance of dict"
         for key, value in sw_sub_key['inputs'].items():
-            sw.my_inputs.update({key: value})
+            if key != "default":
+                sw.my_inputs.update({key: value})
     if "default" in sw_sub_key['inputs']:
         sw.default_input = sw_sub_key['inputs']['default']
 
