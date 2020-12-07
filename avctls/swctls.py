@@ -1,26 +1,78 @@
-import base64
 import importlib
-from flask import Blueprint, render_template, current_app
+from flask import Blueprint, render_template, current_app, flash, redirect, url_for
 
 switcher_bp = Blueprint('switcher', __name__, url_prefix='/switcher')
 
 
 @switcher_bp.route('/')
 def sw_index():
-    return 'this will render the switcher control template, where you can change inputs, etc.'
+    return redirect(url_for('switcher.sw_get_status'))
+
+
+@switcher_bp.route('/status')
+def sw_get_status():
+    try:
+        sw = current_app.room.switcher.interface
+        input_status = sw.get_input_status()
+    except Exception as e:
+        flash(e.args[0])
+        return render_template('switcher.html', room=current_app.room)
+    else:
+        flash('Input selected: {}'.format(input_status))
+        return render_template('switcher.html', room=current_app.room)
+
+
+@switcher_bp.route('/power/<state>')
+def sw_set_power_state(state):
+    try:
+        sw = current_app.room.switcher
+        if state == 'on' or state == '1':
+            if sw.interface.power_on():
+                flash('Power On OK')
+            if sw.default_input:
+                return redirect(url_for('switcher.sw_select_input', inp=sw.default_input))
+
+        elif state == 'off' or state == '0':
+            if sw.interface.power_off():
+                flash('Power Off OK')
+        else:
+            flash("Error: Invalid parameter: '{}'".format(state))
+
+        return render_template('switcher.html', room=current_app.room)
+    except Exception as e:
+        flash(e.args[0])
+        return render_template('switcher.html', room=current_app.room)
+
+
+@switcher_bp.route('/input/<inp>')
+def sw_select_input(inp):
+    try:
+        status = current_app.room.switcher.interface.select_input(inp)
+    except Exception as e:
+        exc_args = e.args[0]
+        # prevent jinja from erroring out on numeric OSErrors, ie connection refused, etc.
+        if type(exc_args) == int:
+            exc_args = str(exc_args)
+        flash(exc_args)
+        return render_template('switcher.html', room=current_app.room)
+    else:
+        flash('Input selected: {}'.format(status))
+        return render_template('switcher.html', room=current_app.room)
 
 
 @switcher_bp.route('/input')
 def sw_input_status():
     status = current_app.room.switcher.interface.input_status
     if not status:
-        return "UNDEFINED"
+        return "None"
     return status
 
 
-@switcher_bp.route('/input/<inp>')
-def sw_select_input(inp):
-    status = current_app.room.switcher.interface.select_input(inp)
+@switcher_bp.route('/power')
+def sw_get_power_state():
+    status = current_app.room.switcher.interface.power_status
+    if not status:
+        return "None"
     return status
 
 
@@ -29,27 +81,6 @@ def sw_select_input(inp):
 def sw_get_inputs():
     inputs = current_app.room.switcher.interface.inputs
     return inputs
-
-
-@switcher_bp.route('/power')
-def sw_get_power_state():
-    status = current_app.room.switcher.interface.power_status
-    if not status:
-        return "UNDEFINED"
-    return status
-
-
-@switcher_bp.route('/power/<state>')
-def sw_set_power_state(state):
-    sw = current_app.room.switcher.interface
-    if state == 'on' or state == '1':
-        if sw.power_on():
-            return 'On'
-    elif state == 'off' or state == '0':
-        if sw.power_off():
-            return 'Off'
-    else:
-        return 'parameter {} invalid'.format(state)
 
 
 class Switcher:

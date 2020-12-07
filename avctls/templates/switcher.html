@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block title %}Switcher controls{% endblock %}
+
+{% block header %}
+<div class="container-fluid">
+    <div class="row align-items-center justify-content-center">
+        Switcher controls:
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <br/>
+    <div class="row align-items-center justify-content-center text-center">
+        <div class="mx-auto" style="width: 600px;">
+            <a href="{{ url_for('switcher.sw_set_power_state', state='on') }}">
+                <button class="btn btn-success btn-lg btn-home" type="button">Switcher Reset</button>
+            </a>
+        </div>
+    </div>
+    <br/><br/>
+    <div class="row align-items-center justify-content-center">
+        {% for input in room.switcher.my_inputs %}
+            <div class="col-3 text-center">
+                <a href="{{ url_for('switcher.sw_select_input', inp=input) }}">
+                    <button class="btn btn-secondary btn-lg btn-input" type="button">{{ input }}</button>
+                </a>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
