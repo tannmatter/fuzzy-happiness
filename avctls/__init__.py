@@ -6,12 +6,14 @@ import json
 import logging
 import os
 import sys
-from flask import Flask, render_template
+import time
+from flask import Flask, render_template, current_app, flash, redirect, url_for
 
 # wrapper classes for passing to templates
 from avctls.pjctls import setup_projector
 from avctls.swctls import setup_switcher
 from avctls.tvctls import TV
+from avctls.errors import (CommandFailureError, DeviceNotReadyError)
 
 logger = logging.getLogger('App')
 logger.setLevel(logging.DEBUG)
@@ -47,10 +49,52 @@ def create_app(test_config=None):
     # Load the room config & instantiate the necessary drivers
     app.room = setup_room(app)
 
-    # Home page with simple controls for turning everything on/off at once
+    # Home page with buttons that select input devices
     @app.route('/')
     @app.route('/home')
     def index():
+        return render_template('home.html', room=app.room)
+
+    @app.route('/input/<inp>')
+    def system_select_input(inp):
+        try:
+            for device_name, input_name in current_app.room.system_inputs[inp].items():
+                device = getattr(current_app.room, device_name)
+                device.interface.select_input(input_name)
+            flash('Input selected: {}'.format(inp))
+        except Exception as e:
+            logger.error('app.system_select_input(): Error: {}'.format(e.args), exc_info=True)
+            flash(e.args[0])
+        return render_template('home.html', room=app.room)
+
+    @app.route('/reset')
+    def system_reset():
+        try:
+            if app.room.projector:
+                app.room.projector.interface.power_on()
+            if app.room.switcher:
+                app.room.switcher.interface.power_on()
+            flash('System reset')
+
+            time.sleep(2)
+
+            if app.room.input_default:
+                return redirect(url_for('system_select_input', inp=app.room.input_default))
+        except Exception as e:
+            flash(e.args[0])
+        return render_template('home.html', room=app.room)
+
+    @app.route('/system_off')
+    def system_power_off():
+        try:
+            # ignore powering off the switcher
+            if app.room.projector:
+                app.room.projector.interface.power_off()
+            if app.room.tv:
+                app.room.tv.interface.power_off()
+            flash('System Off')
+        except Exception as e:
+            flash(e.args[0])
         return render_template('home.html', room=app.room)
 
     # Register blueprints for device control routes
@@ -71,6 +115,7 @@ class Room(object):
         self.switcher = None
         self.tv = None
         self.system_inputs = {}
+        self.input_default = {}
 
 
 def setup_room(app):
@@ -111,6 +156,9 @@ def setup_room(app):
             for input_device in room_config['system_inputs']:
                 # {"projector": "HDMI_1", "switcher": "HDMI_1"} ...
                 inputs_to_switch = room_config['system_inputs'][input_device]
+                # "default" will be a str containing the name of the default input
+                if not isinstance(inputs_to_switch, dict):
+                    continue
                 for device, input_ in inputs_to_switch.items():
                     # Check that the device exists...
                     if hasattr(room, device):
@@ -122,12 +170,17 @@ def setup_room(app):
                             # the route method will look up this sub-dict by its key, and attempt to
                             # switch each listed device to the proper input.
                             room.system_inputs[input_device] = room_config['system_inputs'][input_device]
+            if "default" in room_config['system_inputs']:
+                room.input_default = room_config['system_inputs']['default']
+
         logger.debug('room.system_inputs: {}'.format(room.system_inputs))
+        logger.debug('room.input_default: {}'.format(room.input_default))
 
         return room
     except Exception as e:
         # ... If anything failed to load, we'd better bail out.
         logger.error('app.setup_room(): fatal error: {}'.format(e.args), exc_info=True)
         sys.exit(1)
+
 
 

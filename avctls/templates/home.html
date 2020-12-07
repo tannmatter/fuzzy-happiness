@@ -5,7 +5,6 @@
 {% block header %}
 <div class="container-fluid">
     <div class="row align-items-center justify-content-center">
-        System inputs:
     </div>
 </div>
 {% endblock %}
@@ -17,7 +16,9 @@
         {# <!--Display buttons for room.system_inputs--> #}
         {% for input in room.system_inputs %}
             <div class="col-3 text-center">
-                <button class="btn btn-secondary btn-lg btn-input" type="button">{{ input }}</button>
+                <a href="{{ url_for('system_select_input', inp=input) }}">
+                    <button class="btn btn-secondary btn-lg btn-input" type="button">{{ input }}</button>
+                </a>
             </div>
         {% endfor %}
 

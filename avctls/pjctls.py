@@ -2,6 +2,10 @@ import base64
 import importlib
 from flask import Blueprint, render_template, current_app, flash, redirect, url_for
 
+# clumsy hack
+from avctls.errors import CommandFailureError
+from avctls.drivers.projector.pjlink import PJLink
+
 projector_bp = Blueprint('projector', __name__, url_prefix='/projector')
 
 
@@ -60,6 +64,13 @@ def pj_select_input(inp):
         # prevent jinja from erroring out on numeric OSErrors, ie connection refused, etc.
         if type(exc_args) == int:
             exc_args = str(exc_args)
+
+        # hack for pjlink "command failure" when trying to switch inputs
+        # while the unit is still warming up
+        if isinstance(e, CommandFailureError) and \
+                isinstance(current_app.room.projector.interface, PJLink):
+            flash('Warning: Failed input switch.  Please ensure projector is done warming up.')
+
         flash(exc_args)
         return render_template('projector.html', room=current_app.room)
     else:

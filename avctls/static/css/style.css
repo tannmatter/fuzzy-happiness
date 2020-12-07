@@ -1,6 +1,8 @@
 html,
 body {
-    height: 100%;
+    /*designed for RPi official touchscreen*/
+    width: 800px;
+    height: 480px;
 }
 
 .btn-nav-top {
@@ -30,11 +32,11 @@ body {
     font-size: 1.2em;
 }
 .flash ul li.error{
-    color: red;
+    background-color: red;
 }
 .flash ul li.warning{
-    color: orange;
+    background-color: orange;
 }
 .flash ul li.info{
-    color: green;
+    background-color: green;
 }
