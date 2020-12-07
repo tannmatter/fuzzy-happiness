@@ -13,7 +13,7 @@ def sw_index():
 def sw_get_status():
     try:
         sw = current_app.room.switcher.interface
-        input_status = sw.get_input_status()
+        input_status = sw.input_status
     except Exception as e:
         flash(e.args[0])
         return render_template('switcher.html', room=current_app.room)
