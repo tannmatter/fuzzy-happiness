@@ -70,8 +70,8 @@ def pj_select_input(inp):
         if isinstance(e, CommandFailureError) and \
                 isinstance(current_app.room.projector.interface, PJLink):
             flash('Warning: Failed input switch.  Please ensure projector is done warming up.')
-
-        flash(exc_args)
+        else:
+            flash(exc_args)
         return render_template('projector.html', room=current_app.room)
     else:
         flash('Input selected: {}'.format(status))

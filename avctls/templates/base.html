@@ -19,6 +19,8 @@
 <script src="{{ url_for('static', filename='js/jquery-3.5.1.min.js') }}"></script>
 {# <!--Bootstrap--> #}
 <script src="{{ url_for('static', filename='js/bootstrap-4.5.3.bundle.min.js') }}"></script>
+{# <!--Our own JS--> #}
+<script src="{{ url_for('static', filename='js/avctls.js') }}"></script>
 
 {# <!--UCA purple--> #}
 <nav class="navbar navbar-expand navbar-dark" style="background-color: #4F2D7F;">
@@ -65,17 +67,35 @@
     {# <!--Right aligned--> #}
     <ul class="navbar-nav ml-auto">
         <li class="nav-item">
-            <a href="{{ url_for('system_reset') }}">
-                <button class="btn btn-success btn-lg btn-nav-top" type="button"><i class="fas fa-redo-alt"></i></button>
-            </a>
+            {# <!--All displays on--> #}
+            {# <!--<a href="{{ url_for('displays_on') }}">--> #}
+                <button class="btn btn-success btn-lg btn-nav-top" type="button" data-toggle="modal" data-target="#displaysOnOffModal" data-state="on"><i class="fas fa-power-off"></i></button>
+            {# <!--</a>--> #}
         </li>
         <li class="nav-item">
-            <a href="{{ url_for('system_power_off') }}">
-                <button class="btn btn-danger btn-lg btn-nav-top" type="button"><i class="fas fa-power-off"></i></button>
-            </a>
+            {# <!--All displays off--> #}
+            {# <!--<a href="{{ url_for('displays_off') }}">--> #}
+                <button class="btn btn-danger btn-lg btn-nav-top" type="button" data-toggle="modal" data-target="#displaysOnOffModal" data-state="off"><i class="fas fa-power-off"></i></button>
+            {# <!--</a>--> #}
         </li>
     </ul>
 </nav>
+<div class="modal fade" id="displaysOnOffModal" data-backdrop="static" data-keyboard="false" tabindex="-1" aria-labelledby="labelDisplaysPower" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="labelDisplaysPower">Display Power On/Off</h3>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to power the display(s) on/off?
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="displayPowerButtonOK" class="btn btn-primary">Yes</button>
+                <button type="button" id="displayPowerButtonCancel" class="btn btn-secondary" data-dismiss="modal">No</button>
+            </div>
+        </div>
+    </div>
+</div>
 <section class="content">
     <header>
         {% block header %}{% endblock %}
@@ -109,3 +129,15 @@
     </div>
     {% block content %}{% endblock %}
 </section>
+<script type="text/javascript">
+    $('#displaysOnOffModal').on('show.bs.modal', function(event) {
+        var button = $(event.relatedTarget);
+        var powerState = button.data('state');
+        var modal = $(this);
+        modal.find('.modal-title').text('Display Power '+powerState);
+        modal.find('.modal-body').text('Are you sure you want to power the display(s) '+powerState+'?');
+        $('#displayPowerButtonOK').on('click', function(event) {
+            window.location.href = 'http://localhost:5000/displays_' + powerState
+        });
+    });
+</script>

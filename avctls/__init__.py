@@ -58,8 +58,8 @@ def create_app(test_config=None):
     @app.route('/input/<inp>')
     def system_select_input(inp):
         try:
-            for device_name, input_name in current_app.room.system_inputs[inp].items():
-                device = getattr(current_app.room, device_name)
+            for device_name, input_name in app.room.system_inputs[inp].items():
+                device = getattr(app.room, device_name)
                 device.interface.select_input(input_name)
             flash('Input selected: {}'.format(inp))
         except Exception as e:
@@ -67,32 +67,28 @@ def create_app(test_config=None):
             flash(e.args[0])
         return render_template('home.html', room=app.room)
 
-    @app.route('/reset')
-    def system_reset():
+    @app.route('/displays_on')
+    def displays_on():
         try:
-            if app.room.projector:
-                app.room.projector.interface.power_on()
-            if app.room.switcher:
-                app.room.switcher.interface.power_on()
-            flash('System reset')
-
-            time.sleep(2)
-
-            if app.room.input_default:
-                return redirect(url_for('system_select_input', inp=app.room.input_default))
+            for display_type in ['projector', 'tv']:
+                if hasattr(app.room, display_type):
+                    display = getattr(app.room, display_type)
+                    if display:
+                        display.interface.power_on()
+            flash('Display On')
         except Exception as e:
             flash(e.args[0])
         return render_template('home.html', room=app.room)
 
-    @app.route('/system_off')
-    def system_power_off():
+    @app.route('/displays_off')
+    def displays_off():
         try:
-            # ignore powering off the switcher
-            if app.room.projector:
-                app.room.projector.interface.power_off()
-            if app.room.tv:
-                app.room.tv.interface.power_off()
-            flash('System Off')
+            for display_type in ['projector', 'tv']:
+                if hasattr(app.room, display_type):
+                    display = getattr(app.room, display_type)
+                    if display:
+                        display.interface.power_off()
+            flash('Display Off')
         except Exception as e:
             flash(e.args[0])
         return render_template('home.html', room=app.room)

@@ -3,6 +3,17 @@ body {
     /*designed for RPi official touchscreen*/
     width: 800px;
     height: 480px;
+    max-width: 800px;
+    max-height: 480px;
+
+    margin-right: 0!important;
+    padding-right: 0!important;
+    overflow: hidden;
+}
+
+.navbar, .navbar-expand, fixed-bottom {
+    margin-right: 0!important;
+    padding-right: 0!important;
 }
 
 .btn-nav-top {

@@ -242,13 +242,13 @@ class PJLink(ProjectorInterface):
                 if result:
                     # Check for potential errors and throw appropriate exceptions for them
                     if b'ERR1' in result:
-                        raise BadCommandError('Error: Unrecognized command: {}'.format(cmd_bytes))
+                        raise BadCommandError('Error 1: Unrecognized command: {}'.format(cmd_bytes))
                     elif b'ERR2' in result:
-                        raise OutOfRangeError('Error: Parameter out of range: {}'.format(params))
+                        raise OutOfRangeError('Error 2: Parameter out of range: {}'.format(params))
                     elif b'ERR3' in result:
-                        raise DeviceNotReadyError('Error: Device unavailable.  Is it powered on?')
+                        raise DeviceNotReadyError('Warning: Device unavailable.  Is it powered on?')
                     elif b'ERR4' in result:
-                        raise CommandFailureError('Error: Command failure.')
+                        raise CommandFailureError('Warning: Unable to execute.  Is the device powered on?')
 
                 return result
 

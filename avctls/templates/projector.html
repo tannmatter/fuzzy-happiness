@@ -3,6 +3,23 @@
 {% block title %}Projector controls{% endblock %}
 
 {% block header %}
+<div class="modal fade" id="pjPowerOnOffModal" data-backdrop="static" data-keyboard="false" tabindex="-1" aria-labelledby="labelPjPower" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="labelPjPower">Projector Power On/Off</h3>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to power the projector on/off?
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="pjPowerButtonOK" class="btn btn-primary">Yes</button>
+                <button type="button" id="pjPowerButtonCancel" class="btn btn-secondary" data-dismiss="modal">No</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="container-fluid">
     <div class="row align-items-center justify-content-center">
     </div>
@@ -14,23 +31,55 @@
     <br/>
     <div class="row align-items-center justify-content-center text-center">
         <div class="mx-auto" style="width: 600px;">
-            <a href="{{ url_for('projector.pj_set_power_state', state='on') }}">
-                <button class="btn btn-success btn-lg btn-home" type="button">Projector On / Reset</button>
-            </a>
-            <a href="{{ url_for('projector.pj_set_power_state', state='off') }}">
-                <button class="btn btn-danger btn-lg btn-home" type="button">Projector Off</button>
-            </a>
+            <button class="btn btn-success btn-lg btn-home" type="button" data-toggle="modal" data-target="#pjPowerOnOffModal" data-state="on">Projector On</button>
+            <button class="btn btn-danger btn-lg btn-home" type="button" data-toggle="modal" data-target="#pjPowerOnOffModal" data-state="off">Projector Off</button>
         </div>
     </div>
     <br/><br/>
+    {# <!--
     <div class="row align-items-end justify-content-center">
         {% for input in room.projector.my_inputs %}
             <div class="col-3 text-center align-self-end">
                 <a href="{{ url_for('projector.pj_select_input', inp=input) }}">
-                    <button class="btn btn-secondary btn-lg btn-input" type="button">{{ input }}</button>
+                    {% if room.projector.default_input and room.projector.default_input == input %}
+                        <button class="btn btn-secondary btn-lg btn-input btn-outline-info" type="button">{{ input }}</button>
+                    {% else %}
+                        <button class="btn btn-secondary btn-lg btn-input" type="button">{{ input }}</button>
+                    {% endif %}
                 </a>
             </div>
         {% endfor %}
     </div>
+    --> #}
+    <nav class="navbar fixed-bottom navbar-expand" style="width: 800px; background-color: #4F2D7F;">
+        <div class="container-fluid">
+            <ul class="navbar-nav mr-auto ml-auto">
+                {% for input in room.projector.my_inputs %}
+                <li class="nav-item" style="margin-left: 5px; margin-right: 5px;">
+                    <a href="{{ url_for('projector.pj_select_input', inp=input) }}">
+                    {% if room.projector.default_input and room.projector.default_input == input %}
+                        <button class="btn btn-secondary btn-lg btn-input btn-outline-info" type="button">{{ input }}</button>
+                    {% else %}
+                        <button class="btn btn-secondary btn-lg btn-input" type="button">{{ input }}</button>
+                    {% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </nav>
+
 </div>
+<script type="text/javascript">
+    $('#pjPowerOnOffModal').on('show.bs.modal', function(event) {
+        var button = $(event.relatedTarget);
+        var powerState = button.data('state');
+        var modal = $(this);
+        modal.find('.modal-title').text('Projector Power '+powerState);
+        modal.find('.modal-body').text('Are you sure you want to power the projector '+powerState+'?');
+        $('#pjPowerButtonOK').on('click', function(event) {
+            window.location.href = 'http://localhost:5000/projector/power/' + powerState
+        });
+    });
+</script>
 {% endblock %}
