@@ -26,14 +26,12 @@
 <nav class="navbar navbar-expand navbar-dark" style="background-color: #4F2D7F;">
     <ul class="navbar-nav">
         <li class="nav-item">
-            <a href="{{ url_for('index') }}">
-                <button class="btn btn-primary btn-lg btn-nav-top" type="button"><i class="fas fa-home"></i></button>
+            <a href="{{ url_for('index') }}" tabindex="0" class="btn btn-primary btn-lg btn-nav-top" role="button" data-toggle="popover" data-placement="bottom" data-trigger="manual" data-content="Return to the home screen" title="Home">
+                <i class="fas fa-home"></i>
             </a>
         </li>
         <li class="nav-item">
-            <a href="#">
-                <button class="btn btn-info btn-lg btn-nav-top" type="button"><i class="far fa-question-circle"></i></button>
-            </a>
+            <button id="showHelpButton" class="btn btn-info btn-lg btn-nav-top" type="button" onclick="showhelp();"><i class="far fa-question-circle"></i></button>
         </li>
     </ul>
     {# <!--For centering inside the navbar--> #}
@@ -43,40 +41,40 @@
         <ul class="navbar-nav mr-auto ml-auto">
             {% if room.projector %}
             <li class="nav-item">
-                <a href="{{ url_for('projector.pj_index') }}">
-                    <button class="btn btn-light btn-lg btn-nav-top" type="button"><i class="fas fa-video"></i></button>
+                <a href="{{ url_for('projector.pj_index') }}" tabindex="0" class="btn btn-light btn-lg btn-nav-top" role="button" data-toggle="popover" data-placement="left" data-trigger="manual" data-content="Projector controls" title="Projector">
+                    <i class="fas fa-video"></i>
                 </a>
             </li>
             {% endif %}
             {% if room.switcher %}
             <li class="nav-item">
-                <a href="{{ url_for('switcher.sw_index') }}">
-                    <button class="btn btn-secondary btn-lg btn-nav-top" type="button"><i class="fas fa-random"></i></button>
+                <a href="{{ url_for('switcher.sw_index') }}" tabindex="0" class="btn btn-secondary btn-lg btn-nav-top" role="button" data-toggle="popover" data-placement="bottom" data-trigger="manual" data-content="Switcher controls" title="Switcher">
+                    <i class="fas fa-random"></i>
                 </a>
             </li>
             {% endif %}
             {% if room.tv %}
             <li class="nav-item">
-                <a href="{{ url_for('tv.tv_index') }}">
-                    <button class="btn btn-dark btn-lg btn-nav-top" type="button"><i class="fas fa-tv"></i></button>
+                <a href="{{ url_for('tv.tv_index') }}" tabindex="0" class="btn btn-dark btn-lg btn-nav-top" role="button" data-toggle="popover" data-placement="right" data-trigger="manual" data-content="TV controls" title="TV">
+                    <i class="fas fa-tv"></i>
                 </a>
             </li>
             {% endif %}
         </ul>
     </div>
     {# <!--Right aligned--> #}
-    <ul class="navbar-nav ml-auto">
+    <ul class="navbar-nav ml-auto" data-toggle="popover" data-placement="bottom" data-trigger="manual" data-content="Power on/off all displays" title="Displays On/Off">
         <li class="nav-item">
             {# <!--All displays on--> #}
-            {# <!--<a href="{{ url_for('displays_on') }}">--> #}
-                <button class="btn btn-success btn-lg btn-nav-top" type="button" data-toggle="modal" data-target="#displaysOnOffModal" data-state="on"><i class="fas fa-power-off"></i></button>
-            {# <!--</a>--> #}
+            <button class="btn btn-success btn-lg btn-nav-top" type="button" data-toggle="modal" data-target="#displaysOnOffModal" data-state="on">
+                <i class="fas fa-power-off"></i>
+            </button>
         </li>
         <li class="nav-item">
             {# <!--All displays off--> #}
-            {# <!--<a href="{{ url_for('displays_off') }}">--> #}
-                <button class="btn btn-danger btn-lg btn-nav-top" type="button" data-toggle="modal" data-target="#displaysOnOffModal" data-state="off"><i class="fas fa-power-off"></i></button>
-            {# <!--</a>--> #}
+            <button class="btn btn-danger btn-lg btn-nav-top" type="button" data-toggle="modal" data-target="#displaysOnOffModal" data-state="off">
+                <i class="fas fa-power-off"></i>
+            </button>
         </li>
     </ul>
 </nav>
@@ -90,8 +88,8 @@
                 Are you sure you want to power the display(s) on/off?
             </div>
             <div class="modal-footer">
-                <button type="button" id="displayPowerButtonOK" class="btn btn-primary">Yes</button>
-                <button type="button" id="displayPowerButtonCancel" class="btn btn-secondary" data-dismiss="modal">No</button>
+                <button type="button" id="displayPowerButtonOK" class="btn btn-primary btn-lg">Yes</button>
+                <button type="button" id="displayPowerButtonCancel" class="btn btn-secondary btn-lg" data-dismiss="modal">No</button>
             </div>
         </div>
     </div>
@@ -139,5 +137,17 @@
         $('#displayPowerButtonOK').on('click', function(event) {
             window.location.href = 'http://localhost:5000/displays_' + powerState
         });
+    });
+    /**
+    * https://stackoverflow.com/questions/32839016/how-can-i-toggle-all-my-bootstrap-popovers-by-clicking-on-another-button
+    */
+    function showhelp(){
+        $('[data-toggle="popover"]').popover('toggle');
+    }
+    $('html').on('mouseup', function(event) {
+        if(typeof $(event.target).data('toggle') === "undefined"
+          && $(event.target).attr('id') != 'showHelpButton') {
+            $('[data-toggle="popover"]').popover('hide');
+        }
     });
 </script>

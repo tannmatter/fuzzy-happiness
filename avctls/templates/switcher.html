@@ -5,7 +5,6 @@
 {% block header %}
 <div class="container-fluid">
     <div class="row align-items-center justify-content-center">
-        Switcher controls:
     </div>
 </div>
 {% endblock %}
@@ -15,20 +14,30 @@
     <br/>
     <div class="row align-items-center justify-content-center text-center">
         <div class="mx-auto" style="width: 600px;">
-            <a href="{{ url_for('switcher.sw_set_power_state', state='on') }}">
-                <button class="btn btn-success btn-lg btn-home" type="button">Switcher Reset</button>
+            <a href="{{ url_for('switcher.sw_reset') }}" data-toggle="popover" data-placement="bottom" data-trigger="manual" data-content="Reset the switcher to its default input setting if there is one." title="Reset AV Switcher">
+                <button class="btn btn-success btn-lg btn-home" type="button">AV Switcher Reset</button>
             </a>
         </div>
     </div>
     <br/><br/>
-    <div class="row align-items-center justify-content-center">
-        {% for input in room.switcher.my_inputs %}
-            <div class="col-3 text-center">
-                <a href="{{ url_for('switcher.sw_select_input', inp=input) }}">
-                    <button class="btn btn-secondary btn-lg btn-input" type="button">{{ input }}</button>
-                </a>
-            </div>
-        {% endfor %}
-    </div>
+    <nav class="navbar fixed-bottom navbar-expand" style="width: 800px; background-color: #4F2D7F;">
+        <div class="container-fluid">
+            <ul class="navbar-nav mr-auto ml-auto">
+                {% for input in room.switcher.my_inputs %}
+                <li class="nav-item" style="margin-left: 5px; margin-right: 5px;">
+                    <a href="{{ url_for('switcher.sw_select_input', inp=input) }}" data-toggle="popover" data-placement="top" data-trigger="manual" data-content="Select input '{{ input }}'" title="{{ input }}">
+                    {% if room.switcher.input_default and room.switcher.input_default == input %}
+                        {# <!--Note the asterisk *--> #}
+                        <button class="btn btn-info btn-lg btn-input" type="button">* {{ input }}</button>
+                    {% else %}
+                        <button class="btn btn-info btn-lg btn-input" type="button">{{ input }}</button>
+                    {% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </nav>
+
 </div>
 {% endblock %}

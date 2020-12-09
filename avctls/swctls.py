@@ -22,26 +22,15 @@ def sw_get_status():
         return render_template('switcher.html', room=current_app.room)
 
 
-@switcher_bp.route('/power/<state>')
-def sw_set_power_state(state):
+@switcher_bp.route('/reset')
+def sw_reset():
     try:
         sw = current_app.room.switcher
-        if state == 'on' or state == '1':
-            if sw.interface.power_on():
-                flash('Power On OK')
-            if sw.default_input:
-                return redirect(url_for('switcher.sw_select_input', inp=sw.default_input))
-
-        elif state == 'off' or state == '0':
-            if sw.interface.power_off():
-                flash('Power Off OK')
-        else:
-            flash("Error: Invalid parameter: '{}'".format(state))
-
-        return render_template('switcher.html', room=current_app.room)
+        if sw.input_default:
+            return redirect(url_for('switcher.sw_select_input', inp=sw.input_default))
     except Exception as e:
         flash(e.args[0])
-        return render_template('switcher.html', room=current_app.room)
+    return render_template('switcher.html', room=current_app.room)
 
 
 @switcher_bp.route('/input/<inp>')
@@ -58,22 +47,6 @@ def sw_select_input(inp):
     else:
         flash('Input selected: {}'.format(status))
         return render_template('switcher.html', room=current_app.room)
-
-
-@switcher_bp.route('/input')
-def sw_input_status():
-    status = current_app.room.switcher.interface.input_status
-    if not status:
-        return "None"
-    return status
-
-
-@switcher_bp.route('/power')
-def sw_get_power_state():
-    status = current_app.room.switcher.interface.power_status
-    if not status:
-        return "None"
-    return status
 
 
 # for debugging
@@ -100,7 +73,7 @@ class Switcher:
         interface: SwitcherInterface
             The device's driver
     """
-    def __init__(self, make=None, model=None, my_inputs=None, interface=None, default_input=None):
+    def __init__(self, make=None, model=None, my_inputs=None, interface=None, input_default=None):
         self.make = make
         self.model = model
         if not my_inputs:
@@ -108,7 +81,7 @@ class Switcher:
         else:
             self.my_inputs = my_inputs
         self.interface = interface
-        self.default_input = default_input
+        self.input_default = input_default
 
 
 def setup_switcher(room):
@@ -134,7 +107,7 @@ def setup_switcher(room):
             if key != "default":
                 sw.my_inputs.update({key: value})
     if "default" in sw_sub_key['inputs']:
-        sw.default_input = sw_sub_key['inputs']['default']
+        sw.input_default = sw_sub_key['inputs']['default']
 
     driver_module_name = driver_class_name.lower()
     driver_module = importlib.import_module("avctls.drivers.switcher." + driver_module_name)
@@ -150,7 +123,7 @@ def setup_switcher(room):
         # assume we are using one of the relay classes
         sw.interface = driver_class(
             inputs=sw.my_inputs,
-            input_default=sw.default_input
+            input_default=sw.input_default
         )
     elif comm_method == 'serial':
         assert ("serial_device" in sw_sub_key), "serial connection requested but no serial_device specified!"
@@ -162,7 +135,7 @@ def setup_switcher(room):
             serial_device=sw_sub_key['serial_device'],
             serial_baudrate=baud_rate,
             inputs=sw.my_inputs,
-            input_default=sw.default_input
+            input_default=sw.input_default
         )
     elif comm_method == 'tcp':
         assert ("ip_address" in sw_sub_key), "tcp connection requested but no ip_address specified!"
@@ -171,13 +144,13 @@ def setup_switcher(room):
                 ip_address=sw_sub_key['ip_address'],
                 port=sw_sub_key['port'],
                 inputs=sw.my_inputs,
-                input_default=sw.default_input
+                input_default=sw.input_default
             )
         else:
             sw.interface = driver_class(
                 ip_address=sw_sub_key['ip_address'],
                 inputs=sw.my_inputs,
-                input_default=sw.default_input
+                input_default=sw.input_default
             )
 
     if sw.interface is None:
