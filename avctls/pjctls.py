@@ -39,10 +39,6 @@ def pj_set_power_state(state):
         if state == 'on' or state == '1':
             if pj.interface.power_on():
                 flash('Power On OK')
-            # if a default input is configured, select it now
-            if pj.default_input:
-                return redirect(url_for('projector.pj_select_input', inp=pj.default_input))
-
         elif state == 'off' or state == '0':
             if pj.interface.power_off():
                 flash('Power Off OK')
@@ -64,14 +60,7 @@ def pj_select_input(inp):
         # prevent jinja from erroring out on numeric OSErrors, ie connection refused, etc.
         if type(exc_args) == int:
             exc_args = str(exc_args)
-
-        # hack for pjlink "command failure" when trying to switch inputs
-        # while the unit is still warming up
-        if isinstance(e, CommandFailureError) and \
-                isinstance(current_app.room.projector.interface, PJLink):
-            flash('Warning: Failed input switch.  Please ensure projector is done warming up.')
-        else:
-            flash(exc_args)
+        flash(exc_args)
         return render_template('projector.html', room=current_app.room)
     else:
         flash('Input selected: {}'.format(status))
@@ -114,7 +103,7 @@ class Projector:
         interface: ProjectorInterface
             The device's driver
     """
-    def __init__(self, make=None, model=None, my_inputs=None, interface=None, default_input=None):
+    def __init__(self, make=None, model=None, my_inputs=None, interface=None, input_default=None):
         self.make = make
         self.model = model
         if not my_inputs:
@@ -122,7 +111,7 @@ class Projector:
         else:
             self.my_inputs = my_inputs
         self.interface = interface
-        self.default_input = default_input
+        self.input_default = input_default
 
 
 def setup_projector(room):
@@ -165,7 +154,7 @@ def setup_projector(room):
                     pj.my_inputs.update({key: value.encode()})
 
     if "default" in pj_sub_key['inputs']:
-        pj.default_input = pj_sub_key['inputs']['default']
+        pj.input_default = pj_sub_key['inputs']['default']
 
     # Assume driver module is lowercase version of class name..
     driver_module_name = driver_class_name.lower()

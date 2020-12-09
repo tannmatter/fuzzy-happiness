@@ -156,31 +156,12 @@ class PJLink(ProjectorInterface):
                 self.comms.port = port
                 self.comms.connection.close()
 
-                # None of the information below is really needed and removing
-                # this section may speed things up or prevent sockets dying.
-                """
-                # get what PJLink class we support
-                self.pjlink_class = self.get_pjlink_class()
-
-                # get_lamp_info returns list of lamp hour counts or single int
-                lamp_info = self.get_lamp_info()
-                if isinstance(lamp_info, list):
-                    self.lamp_count = len(lamp_info)
-                else:
-                    self.lamp_count = 1
-                """
-
                 # get custom input mapping
                 if inputs and isinstance(inputs, dict):
                     self.inputs = merge_dicts(inputs, self._default_inputs)
                 else:
                     self.inputs = self._default_inputs
-
                 self._input_default = input_default
-
-                # We're going to handle this from the app now instead
-                #if input_default:
-                #    self.select_input(input_default)
 
             else:
                 raise ValueError('no IP address specified')
@@ -248,8 +229,18 @@ class PJLink(ProjectorInterface):
                     elif b'ERR3' in result:
                         raise DeviceNotReadyError('Warning: Device unavailable.  Is it powered on?')
                     elif b'ERR4' in result:
-                        raise CommandFailureError('Warning: Unable to execute.  Is the device powered on?')
-
+                        # Be more specific about this error: If we were attempting to switch inputs,
+                        # it may be that the unit has not fully powered on yet and is still warming up.
+                        if cmd == self.Command.SWITCH_INPUT:
+                            raise CommandFailureError(
+                                'Warning: Unable to switch input at this time. '
+                                'Please ensure projector has finished starting up.'
+                                '(Power light will stop flashing when it is ready.)'
+                            )
+                        else:
+                            raise CommandFailureError(
+                                'Warning: Unable to execute command.  Is the projector on?'
+                            )
                 return result
 
         except OSError as ose:
