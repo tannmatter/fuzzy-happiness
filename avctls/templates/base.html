@@ -129,6 +129,8 @@
     {% block content %}{% endblock %}
 </section>
 <script type="text/javascript">
+    $SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+
     $('#displaysOnOffModal').on('show.bs.modal', function(event) {
         var button = $(event.relatedTarget);
         var powerState = button.data('state');
@@ -136,7 +138,7 @@
         modal.find('.modal-title').text('Display Power '+powerState);
         modal.find('.modal-body').text('Are you sure you want to power the display(s) '+powerState+'?');
         $('#displayPowerButtonOK').on('click', function(event) {
-            window.location.href = 'http://localhost:5000/displays_' + powerState
+            window.location.href = $SCRIPT_ROOT + '/displays_' + powerState
         });
     });
     /**

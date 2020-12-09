@@ -71,7 +71,7 @@
             'While powering on or off it will be unable to respond to further commands until it is finished.'
         );
         $('#pjPowerButtonOK').on('click', function(event) {
-            window.location.href = 'http://localhost:5000/projector/power/' + powerState
+            window.location.href = $SCRIPT_ROOT + '/projector/power/' + powerState
         });
     });
 </script>
