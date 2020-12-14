@@ -11,25 +11,29 @@ projector_bp = Blueprint('projector', __name__, url_prefix='/projector')
 
 @projector_bp.route('/')
 def pj_index():
-    # Report status and any errors
-    return redirect(url_for('projector.pj_get_status'))
+    try:
+        status = pj_get_status()
+        errors = status['errors']
+        input_status = status['input']
+        power_status = status['power']
+    except Exception as e:
+        flash(e.args[0])
+        return render_template('projector.hmtl', room=current_app.room)
+    else:
+        flash('Power: {}'.format(power_status))
+        flash('Input selected: {}'.format(input_status))
+        return render_template('projector.html', room=current_app.room, errors=errors)
 
 
 @projector_bp.route('/status')
 def pj_get_status():
     try:
         pj = current_app.room.projector.interface
-
-        errors = pj.get_errors()
-        input_status = pj.get_input_status()
-        power_status = pj.get_power_status()
+        status = pj.get_status()
     except Exception as e:
-        flash(e.args[0])
-        return render_template('projector.html', room=current_app.room)
+        raise e
     else:
-        flash('Power: {}'.format(power_status))
-        flash('Input selected: {}'.format(input_status))
-        return render_template('projector.html', room=current_app.room, errors=errors)
+        return status
 
 
 @projector_bp.route('/power/<state>')

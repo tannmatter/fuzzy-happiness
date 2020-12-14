@@ -6,7 +6,13 @@ switcher_bp = Blueprint('switcher', __name__, url_prefix='/switcher')
 
 @switcher_bp.route('/')
 def sw_index():
-    return redirect(url_for('switcher.sw_get_status'))
+    try:
+        status = sw_get_status()
+    except Exception as e:
+        flash(e.args[0])
+    else:
+        flash('Input selected: {}'.format(status))
+    return render_template('switcher.html', room=current_app.room)
 
 
 @switcher_bp.route('/status')
@@ -15,11 +21,9 @@ def sw_get_status():
         sw = current_app.room.switcher.interface
         input_status = sw.input_status
     except Exception as e:
-        flash(e.args[0])
-        return render_template('switcher.html', room=current_app.room)
+        raise e
     else:
-        flash('Input selected: {}'.format(input_status))
-        return render_template('switcher.html', room=current_app.room)
+        return input_status
 
 
 @switcher_bp.route('/reset')
