@@ -205,43 +205,38 @@ class PJLink(ProjectorInterface):
             cmd_bytes += b'\x0d'
 
         try:
-            if self.comms is not None:
-                if self.comms.ip_address is not None:
-                    self.comms.connection = create_connection(
-                        (self.comms.ip_address, self.comms.port)
-                    )
+            self.open_connection()
+            self.comms.send(cmd_bytes)
+            # first thing returned is always some junk
+            # ("%1PJLINK" followed by 0 or 1 depending on whether authentication is enabled)
+            junk_data = self.comms.recv(BUFF_SIZE)
+            result = self.comms.recv(BUFF_SIZE)
 
-                self.comms.send(cmd_bytes)
-                # first thing returned is always some junk
-                # ("%1PJLINK" followed by 0 or 1 depending on whether authentication is enabled)
-                junk_data = self.comms.recv(BUFF_SIZE)
-                result = self.comms.recv(BUFF_SIZE)
+            # close the connection after each command
+            self.comms.connection.close()
 
-                # close the connection after each command
-                self.comms.connection.close()
-
-                if result:
-                    # Check for potential errors and throw appropriate exceptions for them
-                    if b'ERR1' in result:
-                        raise BadCommandError('Error 1: Unrecognized command: {}'.format(cmd_bytes))
-                    elif b'ERR2' in result:
-                        raise OutOfRangeError('Error 2: Parameter out of range: {}'.format(params))
-                    elif b'ERR3' in result:
-                        raise DeviceNotReadyError('Warning: Device unavailable.  Is it powered on?')
-                    elif b'ERR4' in result:
-                        # Be more specific about this error: If we were attempting to switch inputs,
-                        # it may be that the unit has not fully powered on yet and is still warming up.
-                        if cmd == self.Command.SWITCH_INPUT:
-                            raise CommandFailureError(
-                                'Warning: Unable to switch input at this time. '
-                                'Please ensure projector has finished starting up.'
-                                '(Power light will stop flashing when it is ready.)'
-                            )
-                        else:
-                            raise CommandFailureError(
-                                'Warning: Unable to execute command.  Is the projector on?'
-                            )
-                return result
+            if result:
+                # Check for potential errors and throw appropriate exceptions for them
+                if b'ERR1' in result:
+                    raise BadCommandError('Error 1: Unrecognized command: {}'.format(cmd_bytes))
+                elif b'ERR2' in result:
+                    raise OutOfRangeError('Error 2: Parameter out of range: {}'.format(params))
+                elif b'ERR3' in result:
+                    raise DeviceNotReadyError('Warning: Device unavailable.  Is it powered on?')
+                elif b'ERR4' in result:
+                    # Be more specific about this error: If we were attempting to switch inputs,
+                    # it may be that the unit has not fully powered on yet and is still warming up.
+                    if cmd == self.Command.SWITCH_INPUT:
+                        raise CommandFailureError(
+                            'Warning: Unable to switch input at this time. '
+                            'Please ensure projector has finished starting up.'
+                            '(Power light will stop flashing when it is ready.)'
+                        )
+                    else:
+                        raise CommandFailureError(
+                            'Warning: Unable to execute command.  Is the projector on?'
+                        )
+            return result
 
         except OSError as ose:
             # An OSError implies a serious problem: communication is broken.
@@ -250,6 +245,18 @@ class PJLink(ProjectorInterface):
             raise ose
         except Exception as e:
             raise e
+        finally:
+            self.close_connection()
+
+    def open_connection(self):
+        if self.comms.ip_address is not None:
+            self.comms.connection = create_connection(
+                (self.comms.ip_address, self.comms.port)
+            )
+
+    def close_connection(self):
+        if self.comms.connection:
+            self.comms.connection.close()
 
     def get_pjlink_class(self):
         """Get what PJLink class this device supports
@@ -382,8 +389,9 @@ class PJLink(ProjectorInterface):
     def get_lamp_info(self):
         """Get the lamp hours used.
 
-        :rtype: int|list[int]
-        :returns: A single int for single-lamp models, or a list for multi-lamp models.
+        :rtype: dict[str, int] | dict[str, list[int]]
+        :returns: A dictionary containing a "usage" key mapped to the usage
+        hours of the lamp or lamps.  (For compatibility with the NEC driver).
         """
         try:
             result = self.__cmd(cmd=self.Command.LAMP_INFO)
@@ -400,7 +408,7 @@ class PJLink(ProjectorInterface):
 
             # data[0] is hours used, data[1] is power status
             if lamp_count == 1:
-                return int(data[0])
+                return {'usage': int(data[0])}
             else:
                 lamp_data = [int(data[0])]
 
@@ -409,7 +417,7 @@ class PJLink(ProjectorInterface):
                     if index % 2 == 0:
                         lamp_data.append(int(datum))
 
-                return lamp_data
+                return {'usage': lamp_data}
 
     def get_errors(self):
         """Get a list of errors or warnings reported by the projector
@@ -479,8 +487,33 @@ class PJLink(ProjectorInterface):
         else:
             return result[7:].decode('utf-8').rstrip()
 
+    def get_status(self):
+        """Get projector's power state, input, video mute status, lamp info
+        and errors reported.
+
+        :rtype: dict
+        """
+        try:
+            power_status = self.power_status
+            input_status = self.input_status
+            av_mute = self.av_mute
+            lamp_info = self.get_lamp_info()
+            errors = self.get_errors()
+        except Exception as e:
+            logger.error('get_status(): Exception occurred: {}'.format(e.args))
+            raise e
+        else:
+            result = {
+                "power": power_status,
+                "input": input_status,
+                "av_mute": av_mute,
+                "lamp": lamp_info,
+                "errors": errors
+            }
+            return result
+
     #
-    # Methods just for debugging past here
+    # PJLink-specific methods for debugging
     #
 
     def get_input_set(self):

@@ -364,10 +364,6 @@ class NEC(ProjectorInterface):
 
             self._input_default = input_default
 
-            # We're going to handle this from the app now instead
-            #if input_default:
-            #    self.select_input(input_default)
-
         except Exception as e:
             logger.error('__init__(): Exception occurred: {}'.format(e.args), exc_info=True)
             sys.exit(1)
@@ -378,8 +374,7 @@ class NEC(ProjectorInterface):
         Ensure that if a serial or socket interface was opened,
         it is closed whenever we destroy this object.
         """
-        if self.comms.connection:
-            self.comms.connection.close()
+        self.close_connection()
 
     @staticmethod
     def __checksum(vals):
@@ -424,51 +419,41 @@ class NEC(ProjectorInterface):
                 cmd_bytes += bytes([self.__checksum(cmd_bytes)])
 
         try:
-            if self.comms is not None:
-                if self.comms.tcp_ip_address is not None:
-                    self.comms.connection = create_connection(
-                        (self.comms.tcp_ip_address, self.comms.tcp_port)
+            self.open_connection()
+            logger.debug('sending: {}'.format(cmd_bytes))
+            self.comms.send(cmd_bytes)
+            result = self.comms.recv()
+
+            if not result:
+                # Two possibile reasons here:
+                #   1) Connection went south
+                #   2) Malformed command
+                raise ConnectionError('Error: No response from device.  Is it connected?')
+
+            # First byte's high order nibble: '2'==success, 'a'==error
+            if Byte(result[0]).high_nibble_char == 'a':
+                # If an error occurred, 6th and 7th bytes (result[5] & result[6]) are the error codes
+                error_code = tuple(result[5:7])
+
+                if error_code in [(0x00, 0x00)]:
+                    raise BadCommandError('Error {}: Unrecognized command: {}'.format(error_code, cmd_bytes))
+                elif error_code in [(0x00, 0x01)]:
+                    raise UnsupportedOperationError(
+                        'Error {}: Command {} unsupported by this model'.format(error_code, cmd_bytes),
+                        ignore=False
                     )
-                elif self.comms.serial_device is not None:
-                    self.comms.connection.open()
-
-                logger.debug('sending: {}'.format(cmd_bytes))
-                self.comms.send(cmd_bytes)
-                result = self.comms.recv()
-
-                if not result:
-                    # Two possibile reasons here:
-                    #   1) Connection went south
-                    #   2) Malformed command
-                    raise ConnectionError('Error: No response from device.  Is it connected?')
-
-                # close the connection after each command
-                self.comms.connection.close()
-
-                # First byte's high order nibble: '2'==success, 'a'==error
-                if Byte(result[0]).high_nibble_char == 'a':
-                    # If an error occurred, 6th and 7th bytes (result[5] & result[6]) are the error codes
-                    error_code = tuple(result[5:7])
-
-                    if error_code in [(0x00, 0x00)]:
-                        raise BadCommandError('Error {}: Unrecognized command: {}'.format(error_code, cmd_bytes))
-                    elif error_code in [(0x00, 0x01)]:
-                        raise UnsupportedOperationError(
-                            'Error {}: Command {} unsupported by this model'.format(error_code, cmd_bytes),
-                            ignore=False
-                        )
-                    elif error_code in [(0x01, 0x00), (0x01, 0x01), (0x01, 0x02)]:
-                        raise OutOfRangeError(
-                            'Error {}: One or more parameters are out of range: {}'.format(error_code, params)
-                        )
-                    elif error_code in [(0x02, 0x03), (0x02, 0x0D)]:
-                        raise DeviceNotReadyError('Error {}: Device unavailable.  Is it powered on?'.format(error_code))
-                    elif error_code in [(0x02, 0x0E)]:
-                        raise CommandFailureError('Error {}: Command failure.'.format(error_code))
-                    else:
-                        raise Exception(self.cmd_errors[error_code])
+                elif error_code in [(0x01, 0x00), (0x01, 0x01), (0x01, 0x02)]:
+                    raise OutOfRangeError(
+                        'Error {}: One or more parameters are out of range: {}'.format(error_code, params)
+                    )
+                elif error_code in [(0x02, 0x03), (0x02, 0x0D)]:
+                    raise DeviceNotReadyError('Error {}: Device unavailable.  Is it powered on?'.format(error_code))
+                elif error_code in [(0x02, 0x0E)]:
+                    raise CommandFailureError('Error {}: Command failure.'.format(error_code))
                 else:
-                    return result
+                    raise Exception(self.cmd_errors[error_code])
+            else:
+                return result
         except (ConnectionError, OSError) as err:
             # Communication appears to have broken. Log a stack trace.
             logger.error('__cmd(): Fatal exception occurred: {}'.format(err.args), exc_info=True)
@@ -476,6 +461,20 @@ class NEC(ProjectorInterface):
         except Exception as exc:
             # We'll log it from the method it occurred in so our logs are a bit clearer...
             raise exc
+        finally:
+            self.close_connection()
+
+    def open_connection(self):
+        if self.comms.tcp_ip_address is not None:
+            self.comms.connection = create_connection(
+                (self.comms.tcp_ip_address, self.comms.tcp_port)
+            )
+        elif self.comms.serial_device is not None:
+            self.comms.connection.open()
+
+    def close_connection(self):
+        if self.comms.connection:
+            self.comms.connection.close()
 
     def power_on(self) -> bool:
         """Power the projector on.
@@ -560,51 +559,59 @@ class NEC(ProjectorInterface):
         """
         try:
             data = self.__cmd(cmd=self.Command.STATUS)
-            vals = tuple(data[8:10])
-            if vals not in self.status.keys():
-                raise OutOfRangeError("get_input_status(): unrecognized input value {}.\n"
-                                      "This means our NEC documentation is definitely out of date. "
-                                      "If you're seeing this, please notify IT's AV Services department."
-                                      .format(vals))
-
-            input_string = self.status[vals]
-            # recommend always logging this
-            logger.info('get_input_status(): {} : {}'.format(vals, input_string))
-
-            # NEC makes this more difficult than it should be. Input setting and getting
-            # use different values, and the manual implies those values vary by model.
-            # So we'll have to give it our best guess...
-
-            # input_group (first number) should ordinarily be 0x01, 0x02, or 0x03
-            # if it's 0x04 or 0x05, we're on one of the viewer or LAN inputs
-            input_group = data[8]
-
-            guess = ''
-
-            if "Computer" in input_string:
-                guess = 'RGB_' + str(input_group)
-            elif "HDMI" in input_string or "HDBaseT" in input_string:
-                guess = 'HDMI_' + str(input_group)
-            elif "Video" in input_string:
-                guess = 'VIDEO_1'
-            elif "DisplayPort" in input_string:
-                guess = 'DISPLAYPORT'
-            elif "S-video" in input_string or "Component" in input_string:
-                guess = 'VIDEO_2'
-            elif "LAN" in input_string:
-                guess = 'NETWORK'
-            # Who knows/cares what the hell input it's on?  Some kind of viewer.
-            elif "Viewer" in input_string or "SLOT" in input_string or "APPS" in input_string:
-                guess = 'USB_VIEWER_A'
-
-            if guess in self.inputs:
-                return key_for_value(self.inputs, self.inputs[guess])
-            else:
-                raise OutOfRangeError('get_input_status(): unable to reliably determine input from values: {}\n'
-                                      'Our NEC documentation may be out of date. Please notify IT.'.format(vals))
+            input_code = tuple(data[8:10])
+            return self.__determine_input(input_code)
         except Exception as e:
             logger.error('Exception: {}'.format(e.args))
             raise e
+
+    def __determine_input(self, input_code):
+        """Helper method for get_input_status()
+
+        Separated from get_input_status() because the logic here can be reused later
+        in get_status() to avoid having to call get_input_status() again.
+        """
+        if input_code not in self.status.keys():
+            raise OutOfRangeError("__determine_input(): unrecognized input value {}.\n"
+                                  "This means our NEC documentation is definitely out of date. "
+                                  "If you're seeing this, please notify IT's AV Services department."
+                                  .format(input_code))
+
+        input_string = self.status[input_code]
+        # recommend always logging this
+        logger.info('__determine_input(): {} : {}'.format(input_code, input_string))
+
+        # NEC makes this more difficult than it should be. Input setting and getting
+        # use different values, and the manual implies those values vary by model.
+        # So we'll have to give it our best guess...
+
+        # input_group (first number) should ordinarily be 0x01, 0x02, or 0x03
+        # if it's 0x04 or 0x05, we're on one of the viewer or LAN inputs
+        input_group = input_code[0]
+
+        guess = ''
+
+        if "Computer" in input_string:
+            guess = 'RGB_' + str(input_group)
+        elif "HDMI" in input_string or "HDBaseT" in input_string:
+            guess = 'HDMI_' + str(input_group)
+        elif "Video" in input_string:
+            guess = 'VIDEO_1'
+        elif "DisplayPort" in input_string:
+            guess = 'DISPLAYPORT'
+        elif "S-video" in input_string or "Component" in input_string:
+            guess = 'VIDEO_2'
+        elif "LAN" in input_string:
+            guess = 'NETWORK'
+        # Who knows/cares what the hell input it's on?  Some kind of viewer.
+        elif "Viewer" in input_string or "SLOT" in input_string or "APPS" in input_string:
+            guess = 'USB_VIEWER_A'
+
+        if guess in self.inputs:
+            return key_for_value(self.inputs, self.inputs[guess])
+        else:
+            raise OutOfRangeError('__determine_input(): unable to reliably determine input from values: {}\n'
+                                  'Our NEC documentation may be out of date. Please notify IT.'.format(input_code))
 
     @property
     def input_status(self):
@@ -723,32 +730,34 @@ class NEC(ProjectorInterface):
             model = data[5:37].decode('utf-8').rstrip('\x00')
             return model
 
-    #
-    # Methods just for debugging past here
-    #
-
     def get_status(self) -> dict:
-        """Return information about what source is selected, and status of
-        power, display, picture mute, sound mute, and picture freeze
+        """Get projector's power state, input, video mute status, lamp info
+        and errors reported.
         """
         try:
-            data = self.__cmd(self.Command.STATUS)
+            status_info = self.__cmd(self.Command.STATUS)
+            power_status = self.status['power'][status_info[6]]
+            input_status = self.__determine_input(tuple(status_info[8:10]))
+            av_mute = self.status['video_mute'][status_info[11]]
+
+            lamp_info = self.get_lamp_info()
+            errors = self.get_errors()
         except Exception as e:
             logger.error('get_status(): Exception occurred: {}'.format(e.args))
             raise e
         else:
             result = {
-                'status': {
-                    'power': self.status['power'][data[6]],
-                    'display': self.status['display'][data[7]],
-                    'source': self.status[tuple(data[8:10])],
-                    'video_type': self.status['video_type'][data[10]],
-                    'video_mute': self.status['video_mute'][data[11]],
-                    'sound_mute': self.status['sound_mute'][data[12]],
-                    'video_freeze': self.status['video_freeze'][data[14]]
-                }
+                'power': power_status,
+                'input': input_status,
+                'av_mute': av_mute,
+                'lamp': lamp_info,
+                'errors': errors
             }
             return result
+
+    #
+    # NEC-specific methods for debugging
+    #
 
     def get_basic_info(self) -> dict:
         """Return projector model information, lamp hours, & filter hours.
@@ -794,17 +803,6 @@ class NEC(ProjectorInterface):
             }
             return result
 
-    def get_input(self) -> str:
-        """Return a text string representing what input terminal the projector appears to be set to."""
-        try:
-            data = self.__cmd(self.Command.STATUS)
-        except Exception as e:
-            logger.error('get_input(): Exception occurred: {}'.format(e.args))
-            raise e
-        else:
-            source = self.status[tuple(data[8:10])]
-            return source
-
     def get_filter_info(self) -> dict:
         """Return the projector's filter usage hours"""
         try:
@@ -821,14 +819,3 @@ class NEC(ProjectorInterface):
                 }
             }
             return result
-
-    def get_all_info(self) -> dict:
-        """Return all data gathered from the projector by calling each
-        get_...() method and merging the results into one dictionary
-        """
-        basic_info = self.get_basic_info()
-        status = self.get_status()
-
-        data = {**basic_info, **status}
-
-        return data
